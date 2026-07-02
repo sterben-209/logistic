@@ -295,7 +295,7 @@ const FreePortDigitizer = ({ user }) => {
   const [slots, setSlots] = useState([]);
   const [inventory, setInventory] = useState([]); 
   const [slotUpdateTick, setSlotUpdateTick] = useState(0);
-  const [showLabels, setShowLabels] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(16);
   const [hoveredSlotData, setHoveredSlotData] = useState(null);
   const [activeRoute, setActiveRoute] = useState([]);
@@ -323,10 +323,18 @@ const FreePortDigitizer = ({ user }) => {
           setGates(data.gates || []);
           setInventory(data.inventory || []);
           setActiveRoute(data.activeRoute || []);
+          if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
         }
       }).catch(err => console.error("Lỗi tải dữ liệu", err));
     }
   }, [user]);
+
+  // Báo cáo thay đổi lên Parent Window (SPA index.html)
+  useEffect(() => {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'SYNC_PORT_DATA', payload: { slots, inventory } }, '*');
+    }
+  }, [slots, inventory]);
 
   const handlePolygonComplete = useCallback((latLngs) => {
     const newZone = {
@@ -530,7 +538,7 @@ const FreePortDigitizer = ({ user }) => {
     if (!user) return;
     setIsSavingToDB(true);
     try {
-      await saveMapData(user.id, { storageZones, slots, gates, inventory, activeRoute });
+      await saveMapData(user.id, { storageZones, slots, gates, inventory, activeRoute, portBoundary });
       alert("✅ Đã lưu toàn bộ bản đồ và kho hàng lên hệ thống (Supabase) thành công!");
     } catch (e) {
       console.error(e);
@@ -799,18 +807,23 @@ const FreePortDigitizer = ({ user }) => {
     });
     Object.keys(groups40ft).forEach(parentId => {
        const pair = groups40ft[parentId];
-       if (pair.length === 2) {
+       if (pair.length >= 1) {
           try {
              const pts = [];
-             pair[0].path.forEach(p => pts.push(turf.point([p[1], p[0]])));
-             pair[1].path.forEach(p => pts.push(turf.point([p[1], p[0]])));
-             const hull = turf.convex(turf.featureCollection(pts));
-             features.push({
-               type: 'Feature',
-               properties: { id: parentId, status: 'occupied_40', color: '#b91c1c', fillColor: occ40Color, fillOpacity: 0.9, interactive: true },
-               geometry: hull.geometry
+             pair.forEach(slot => {
+                slot.path.forEach(p => pts.push(turf.point([p[1], p[0]])));
              });
-          } catch(e) {}
+             const featureColl = turf.featureCollection(pts);
+             // Turf convex requires at least 3 points, which is satisfied by a single slot's 4 points
+             const hull = turf.convex(featureColl);
+             if (hull) {
+                features.push({
+                  type: 'Feature',
+                  properties: { id: parentId, status: 'occupied_40', color: '#b91c1c', fillColor: occ40Color, fillOpacity: 0.9, interactive: true },
+                  geometry: hull.geometry
+                });
+             }
+          } catch(e) { console.warn("Lỗi vẽ hull 40ft:", e); }
        }
     });
     slots.forEach(slot => {
