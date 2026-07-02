@@ -20,7 +20,7 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import { generateGridWithTurf, createFlatBufferPolygon } from '../services/turfService';
 import { fetchOSMFeatures } from '../services/osmService';
 import { buildGraph, findShortestPath } from '../services/routingService';
-import { saveMapData, loadMapData, logout } from '../services/supabaseService';
+import { saveMapData, loadMapData, logout, loadLocalCheData, syncCheData } from '../services/supabaseService';
 
 import L from 'leaflet';
 delete L.Icon.Default.prototype._getIconUrl;
@@ -100,7 +100,15 @@ const parseSlotId = (slotId) => {
   };
 };
 
-const HoverInfoPanel = ({ hoveredSlotData, inventory }) => {
+const HoverInfoPanel = ({ inventory }) => {
+  const [hoveredSlotData, setHoveredSlotData] = useState(null);
+
+  useEffect(() => {
+    const handleHover = (e) => setHoveredSlotData(e.detail);
+    window.addEventListener('slotHover', handleHover);
+    return () => window.removeEventListener('slotHover', handleHover);
+  }, []);
+
   const stackedContainers = useMemo(() => {
     if (!hoveredSlotData || !hoveredSlotData.id) return [];
     
@@ -115,14 +123,11 @@ const HoverInfoPanel = ({ hoveredSlotData, inventory }) => {
       const cBayNum = parseInt(c.bay, 10);
       
       if (hoveredBayNum % 2 === 0) {
-         // Nếu đang hover vào 1 ô 40ft (chẵn), lấy tất cả cont 40ft đó và các cont 20ft có thể bị đè bên dưới
          return cBayNum === hoveredBayNum || cBayNum === hoveredBayNum - 1 || cBayNum === hoveredBayNum + 1;
       } else {
-         // Nếu đang hover vào 1 ô 20ft (lẻ)
          if (c.size === 20) {
             return cBayNum === hoveredBayNum;
          } else if (c.size === 40 || c.size === 45) {
-            // Tìm cont 40ft (chẵn) nằm vắt qua ô lẻ này
             return cBayNum === hoveredBayNum - 1 || cBayNum === hoveredBayNum + 1;
          }
       }
@@ -134,7 +139,6 @@ const HoverInfoPanel = ({ hoveredSlotData, inventory }) => {
 
   if (!hoveredSlotData) return null;
   const parsed = parseSlotId(hoveredSlotData.id);
-  if (!parsed) return null;
 
   return (
     <div style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 1000, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '15px 20px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', color: '#f8fafc', minWidth: '260px', pointerEvents: 'auto', fontFamily: 'sans-serif' }}>
@@ -245,23 +249,141 @@ const ZonePopupForm = ({ zone, onSave, onGenerateGrid, onAdjustPadding }) => {
   );
 };
 
+// --- OPTIMIZATION: Static Icons and Rotated Marker to prevent memory leaks and React-Leaflet unmounting ---
+const TRUCK_SVG = `<svg width="18" height="36" viewBox="0 0 20 40" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="12" width="16" height="28" fill="#3b82f6" rx="2" stroke="#1e3a8a" stroke-width="1"/><rect x="4" y="0" width="12" height="10" fill="#eab308" rx="2" stroke="#a16207" stroke-width="1"/><rect x="5" y="6" width="10" height="3" fill="#1e293b"/></svg>`;
+const AGV_SVG = `<svg width="20" height="26" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="24" height="30" fill="#10b981" rx="4" stroke="#047857" stroke-width="2"/><rect x="4" y="4" width="16" height="22" fill="#059669" rx="2"/><circle cx="12" cy="4" r="2" fill="#fbbf24"/></svg>`;
+const RTG_SVG = `<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="22" height="22" fill="none" stroke="#eab308" stroke-width="3"/><rect x="10" y="10" width="10" height="10" fill="#ca8a04"/><circle cx="4" cy="4" r="2" fill="#333"/><circle cx="26" cy="4" r="2" fill="#333"/><circle cx="4" cy="26" r="2" fill="#333"/><circle cx="26" cy="26" r="2" fill="#333"/></svg>`;
+const RS_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="16" height="12" fill="#f97316" rx="2"/><rect x="8" y="4" width="8" height="4" fill="#333"/><rect x="2" y="12" width="2" height="4" fill="#333"/><rect x="20" y="12" width="2" height="4" fill="#333"/></svg>`;
+
+const staticTruckIcon = L.divIcon({
+  html: `<div class="rotatable-inner" style="transform-origin: center; filter: drop-shadow(3px 5px 4px rgba(0,0,0,0.4)); display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; transition: transform 0.15s linear;">${TRUCK_SVG}</div>`,
+  className: 'fleet-icon-wrapper',
+  iconSize: [18, 36],
+  iconAnchor: [9, 18]
+});
+const staticAgvIcon = L.divIcon({
+  html: `<div class="rotatable-inner" style="transform-origin: center; filter: drop-shadow(3px 5px 4px rgba(0,0,0,0.4)); display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; transition: transform 0.15s linear;">${AGV_SVG}</div>`,
+  className: 'fleet-icon-wrapper',
+  iconSize: [20, 26],
+  iconAnchor: [10, 13]
+});
+const staticRtgIcon = L.divIcon({
+   html: `<div style="filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4)); display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">${RTG_SVG}</div>`,
+   className: 'che-icon-wrapper',
+   iconSize: [30, 30],
+   iconAnchor: [15, 15]
+});
+const staticRsIcon = L.divIcon({
+   html: `<div style="filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4)); display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">${RS_SVG}</div>`,
+   className: 'che-icon-wrapper',
+   iconSize: [24, 24],
+   iconAnchor: [12, 12]
+});
+
+const RotatedMarker = React.memo(({ id, position, icon, heading, progress }) => {
+  const markerRef = useRef(null);
+
+  useEffect(() => {
+    if (markerRef.current) {
+      const el = markerRef.current.getElement();
+      if (el) {
+        const inner = el.querySelector('.rotatable-inner');
+        if (inner) {
+          inner.style.transform = `rotate(${heading || 0}deg)`;
+        }
+      }
+    }
+  }, [heading]);
+
+  return (
+    <Marker ref={markerRef} position={position} icon={icon}>
+      <Tooltip direction="top" opacity={0.9}>
+         <span style={{ fontWeight: 'bold' }}>{id}</span> ({Math.round(progress)}%)
+      </Tooltip>
+    </Marker>
+  );
+});
+// -------------------------------------------------------------------------------------
+
+
+const MemoizedStaticMapLayers = React.memo(({
+  portBoundary, storageZones, getPolygonStyle, showLabels,
+  handleUpdateZone, handleGenerateGrid, handleAdjustPadding
+}) => {
+  return (
+    <>
+      {portBoundary && (
+        <GeoJSON key={JSON.stringify(portBoundary)} data={portBoundary} style={{ color: '#D50000', weight: 4, fillOpacity: 0.05, dashArray: '10, 10' }} />
+      )}
+      {storageZones.filter(z => z.zoneType !== 'ROAD' && z.zoneType !== 'ROAD_LINE').map(zone => (
+        <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
+          {(showLabels && zone.name && zone.name !== '') && (
+            <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
+              <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
+            </Tooltip>
+          )}
+          <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
+        </Polygon>
+      ))}
+      {storageZones.filter(z => z.zoneType === 'ROAD').map(zone => (
+        <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
+          {(showLabels && zone.name && zone.name !== '') && (
+            <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
+              <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
+            </Tooltip>
+          )}
+          <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
+        </Polygon>
+      ))}
+      {storageZones.filter(z => z.zoneType === 'ROAD_LINE').map(zone => (
+        <Polyline key={zone.id} positions={zone.path} color="#facc15" weight={6} dashArray="10, 10">
+          {showLabels && (
+            <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
+              <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name || 'Đường'} ({zone.id})</span>
+            </Tooltip>
+          )}
+          <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
+        </Polyline>
+      ))}
+    </>
+  );
+});
+
 // Component render GeoJSON tốc độ cao với thuật toán Windowing (Culling off-screen)
 const SlotLayer = ({ slotGeoJSON, style, onEachFeature }) => {
   const map = useMap();
   const layerRef = useRef(null);
+  const geoJsonRef = useRef(slotGeoJSON);
+
+  // Sync ref and apply style updates without clearLayers()
+  useEffect(() => {
+     geoJsonRef.current = slotGeoJSON;
+     if (layerRef.current) {
+         layerRef.current.eachLayer(layer => {
+             const updatedFeature = slotGeoJSON.features.find(f => f.properties.id === layer.feature.properties.id);
+             if (updatedFeature) {
+                 layer.feature = updatedFeature;
+                 layer.setStyle(style(updatedFeature));
+             }
+         });
+     }
+  }, [slotGeoJSON, style]);
 
   useEffect(() => {
-    if (!slotGeoJSON) return;
-
     if (!layerRef.current) {
       layerRef.current = L.geoJSON(null, { style, onEachFeature }).addTo(map);
     }
 
     const updateVisible = () => {
-      if (map.getZoom() < 18) return;
+      if (map.getZoom() < 18) {
+          if (layerRef.current) layerRef.current.clearLayers();
+          return;
+      }
       
       const bounds = map.getBounds().pad(0.3);
-      const visibleFeatures = slotGeoJSON.features.filter(f => {
+      if (!geoJsonRef.current) return;
+      
+      const visibleFeatures = geoJsonRef.current.features.filter(f => {
          const coords = f.geometry.coordinates[0][0]; 
          return bounds.contains(L.latLng(coords[1], coords[0]));
       });
@@ -284,11 +406,13 @@ const SlotLayer = ({ slotGeoJSON, style, onEachFeature }) => {
         layerRef.current = null;
       }
     };
-  }, [map, slotGeoJSON, style, onEachFeature]);
+  }, [map, onEachFeature]);
 
   return null;
 };
-const FreePortDigitizer = ({ user }) => {
+const MapResizer = ({ isActive }) => { const map = useMap(); useEffect(() => { if (isActive) { setTimeout(() => map.invalidateSize(), 100); } }, [isActive, map]); return null; };
+
+const FreePortDigitizer = ({ user, isActive }) => {
   const mapRef = useRef(null);
   const [storageZones, setStorageZones] = useState([]);
   const [gates, setGates] = useState([]);
@@ -297,10 +421,12 @@ const FreePortDigitizer = ({ user }) => {
   const [slotUpdateTick, setSlotUpdateTick] = useState(0);
   const [showLabels, setShowLabels] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(16);
-  const [hoveredSlotData, setHoveredSlotData] = useState(null);
   const [activeRoute, setActiveRoute] = useState([]);
+  const [activeFleet, setActiveFleet] = useState([]);
+  const fleetRef = useRef([]);
+  const [activeChe, setActiveChe] = useState([]);
+  const cheRef = useRef([]);
   const [graphData, setGraphData] = useState(null);
-  
   const [searchInput, setSearchInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [predictions, setPredictions] = useState([]);
@@ -308,26 +434,150 @@ const FreePortDigitizer = ({ user }) => {
   
   const [isDetecting, setIsDetecting] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
+  const [isSyncingChe, setIsSyncingChe] = useState(false);
+
+  // Khởi tạo CHE (Xe nâng) tự động ngay khi load xong bãi
+  useEffect(() => {
+    if (slots.length === 0 || cheRef.current.length > 0) return;
+    const initCHE = async () => {
+      try {
+        let rawData = await loadLocalCheData();
+        if (!rawData || rawData.length === 0) return;
+        
+        const cheList = rawData.map(c => {
+           const randomSlot = slots[Math.floor(Math.random() * slots.length)];
+           const pos = randomSlot ? [
+               randomSlot.path.reduce((s, p) => s + p[0], 0) / randomSlot.path.length,
+               randomSlot.path.reduce((s, p) => s + p[1], 0) / randomSlot.path.length
+           ] : [10.762622, 106.741000];
+           return {
+               id: c.id,
+               type: c.type,
+               status: 'idle',
+               currentPos: pos,
+               targetSlotPos: null,
+               targetVehicleId: null,
+               handlingProgress: 0
+           };
+        });
+        cheRef.current = cheList;
+        setActiveChe([...cheList]);
+      } catch (e) { console.error("Lỗi khởi tạo CHE", e); }
+    };
+    initCHE();
+  }, [slots]);
+
+  const handleSyncChe = async () => {
+     setIsSyncingChe(true);
+     let syncError = null;
+     let rawData = [];
+     try {
+        rawData = await loadLocalCheData();
+        try {
+            await syncCheData(rawData); // Lưu lên Supabase
+        } catch (dbErr) {
+            console.warn("Chưa tạo bảng che_equipment trên Supabase:", dbErr);
+            syncError = dbErr.message;
+        }
+        
+        const cheList = rawData.map(c => {
+           const randomSlot = slots[Math.floor(Math.random() * slots.length)];
+           const pos = randomSlot ? [
+               randomSlot.path.reduce((s, p) => s + p[0], 0) / randomSlot.path.length,
+               randomSlot.path.reduce((s, p) => s + p[1], 0) / randomSlot.path.length
+           ] : [10.762622, 106.741000];
+           return {
+               id: c.id,
+               type: c.type,
+               status: 'idle',
+               currentPos: pos,
+               targetSlotPos: null,
+               targetVehicleId: null,
+               handlingProgress: 0
+           };
+        });
+        cheRef.current = cheList;
+        setActiveChe([...cheList]);
+        
+        if (syncError) {
+            alert(`Đã nạp ${cheList.length} xe nâng từ Local JSON!\n(Cảnh báo DB: ${syncError} - Sếp cần tạo bảng trên Supabase)`);
+        } else {
+            alert("Đã đồng bộ " + cheList.length + " thiết bị nâng hạ (CHE) thành công!");
+        }
+     } catch (e) { alert("Lỗi đọc file: " + e.message); }
+     setIsSyncingChe(false);
+  };
+  const [isSimulating, setIsSimulating] = useState(false);
   
   const [portBoundary, setPortBoundary] = useState(null);
   const [activeBaseLayer, setActiveBaseLayer] = useState('Vệ Tinh (ESRI)');
   const [isSavingToDB, setIsSavingToDB] = useState(false);
 
-  // Khôi phục dữ liệu từ DB khi Login
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Khôi phục dữ liệu từ LocalStorage hoặc DB
   useEffect(() => {
-    if (user) {
-      loadMapData(user.id || user.uid).then(data => {
+    const cached = localStorage.getItem('nexus_port_data_cache');
+    let hasCache = false;
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        if ((data.storageZones && data.storageZones.length > 0) || (data.slots && data.slots.length > 0) || data.portBoundary) {
+          setStorageZones(data.storageZones || []);
+          setSlots(data.slots || []);
+          setGates(data.gates || []);
+          setInventory(data.inventory || []);
+          setActiveRoute([]);
+          if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+          hasCache = true;
+          setIsDataLoaded(true);
+        }
+      } catch(e) {}
+    }
+
+    if (!hasCache && user) {
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Supabase Fetch Timeout")), 3000));
+      
+      Promise.race([loadMapData(user.id || user.uid), timeoutPromise])
+      .then(data => {
         if (data) {
           setStorageZones(data.storageZones || []);
           setSlots(data.slots || []);
           setGates(data.gates || []);
           setInventory(data.inventory || []);
-          setActiveRoute(data.activeRoute || []);
+          setActiveRoute([]);
           if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
         }
-      }).catch(err => console.error("Lỗi tải dữ liệu", err));
+        setIsDataLoaded(true);
+      }).catch(err => {
+        console.warn("Lỗi tải dữ liệu DB (Dùng fallback):", err.message);
+        setIsDataLoaded(true);
+      });
+    } else if (!hasCache && !user) {
+      setTimeout(() => setIsDataLoaded(true), 1500);
     }
   }, [user]);
+
+  // Auto-save vào LocalStorage mỗi khi có thay đổi
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    try {
+      // Ép kiểu tọa độ còn 6 chữ số thập phân để giảm dung lượng file xuống 60%, tránh QuotaExceededError
+      const compactSlots = slots.map(s => ({
+         ...s,
+         path: s.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
+      }));
+      const compactZones = storageZones.map(z => ({
+         ...z,
+         path: z.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
+      }));
+      
+      const dataToCache = { storageZones: compactZones, slots: compactSlots, gates, inventory, portBoundary };
+      localStorage.setItem('nexus_port_data_cache', JSON.stringify(dataToCache));
+    } catch (error) {
+      console.warn("Không thể lưu cache (quá dung lượng):", error);
+    }
+  }, [storageZones, slots, gates, inventory, portBoundary, isDataLoaded]);
 
   // Báo cáo thay đổi lên Parent Window (SPA index.html)
   useEffect(() => {
@@ -335,6 +585,261 @@ const FreePortDigitizer = ({ user }) => {
       window.parent.postMessage({ type: 'SYNC_PORT_DATA', payload: { slots, inventory } }, '*');
     }
   }, [slots, inventory]);
+
+  // Fleet Animation Loop
+  useEffect(() => {
+    let animationFrameId;
+    let lastSyncTime = 0;
+
+    const animateFleet = (timestamp) => {
+      let hasChanges = false;
+      let hasMoving = false;
+      
+      fleetRef.current.forEach(v => {
+        if (v.status !== 'moving') return;
+        hasMoving = true;
+        hasChanges = true;
+        
+        const p1 = v.path[v.currentSegmentIdx];
+        const p2 = v.path[v.currentSegmentIdx + 1];
+        
+        if (!p2) {
+           if (v.isLeg1) {
+              if (!v.cheStatus) {
+                 v.cheStatus = 'waiting';
+                 // Assign CHE
+                 const idleChe = cheRef.current.find(c => c.status === 'idle');
+                 if (idleChe) {
+                    idleChe.status = 'moving_to_slot';
+                    idleChe.targetVehicleId = v.id;
+                    idleChe.targetSlotPos = [...v.currentPos];
+                 }
+              } else if (v.cheStatus === 'done') {
+                 if (v.leg2Ready && v.pathOut) {
+                    v.path = v.pathOut;
+                    v.currentSegmentIdx = 0;
+                    v.isLeg1 = false;
+                 }
+              }
+           } else {
+              v.status = 'arrived';
+              v.progress = 100;
+           }
+           return;
+        }
+        
+        const lat1 = p1[0];
+        const lng1 = p1[1];
+        const lat2 = p2[0];
+        const lng2 = p2[1];
+        
+        const dx = lat2 - lat1;
+        const dy = lng2 - lng1;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist < 0.000001) {
+           v.currentSegmentIdx++;
+           return;
+        }
+        
+        const moveRatio = v.speed / dist;
+        
+        let curLat = v.currentPos[0];
+        let curLng = v.currentPos[1];
+        
+        curLat += dx * moveRatio;
+        curLng += dy * moveRatio;
+        
+        const newDx = lat2 - curLat;
+        const newDy = lng2 - curLng;
+        
+        if (dx * newDx + dy * newDy <= 0) {
+           v.currentSegmentIdx++;
+           v.currentPos = [lat2, lng2];
+        } else {
+           v.currentPos = [curLat, curLng];
+        }
+        
+        // Tính góc xoay (Heading) để quay đầu xe
+        v.heading = Math.atan2(dy, dx) * (180 / Math.PI);
+        
+        v.progress = Math.min(99, (v.currentSegmentIdx / (v.path.length - 1)) * 100);
+      });
+      
+      // CHE Animation Logic
+      cheRef.current.forEach(che => {
+         if (che.status === 'idle') return;
+         hasChanges = true;
+         // Cập nhật trạng thái CHE
+         if (che.status === 'moving_to_slot') {
+             const dx = che.targetSlotPos[0] - che.currentPos[0];
+             const dy = che.targetSlotPos[1] - che.currentPos[1];
+             const dist = Math.sqrt(dx*dx + dy*dy);
+             
+             if (dist < 0.000005) {
+                 che.status = 'handling';
+                 che.handlingProgress = 0;
+                 che.currentPos = [...che.targetSlotPos];
+             } else {
+                 const moveRatio = 0.00002 / dist; // Tốc độ di chuyển của cẩu
+                 che.currentPos[0] += dx * moveRatio;
+                 che.currentPos[1] += dy * moveRatio;
+             }
+         } else if (che.status === 'handling') {
+             che.handlingProgress += 1; 
+             if (che.handlingProgress >= 100) {
+                 che.status = 'idle';
+                 const vehicle = fleetRef.current.find(v => v.id === che.targetVehicleId);
+                 if (vehicle) {
+                     vehicle.cheStatus = 'done';
+                 }
+                 che.targetVehicleId = null;
+             }
+         }
+      });
+      
+      if (hasChanges && (timestamp - lastSyncTime > 150)) {
+         // Xóa hẳn xe tải khỏi bản đồ khi đã về đến cổng (arrived)
+         const arrivedVehicles = fleetRef.current.filter(v => v.status === 'arrived');
+         if (arrivedVehicles.length > 0) {
+            setActiveRoute([]); // Xóa đường đi màu xanh khi xe hoàn thành
+         }
+         
+         fleetRef.current = fleetRef.current.filter(v => v.status === 'moving');
+         
+         setActiveFleet([...fleetRef.current]);
+         setActiveChe([...cheRef.current]);
+         
+         window.postMessage({ 
+             type: 'SYNC_FLEET_DATA', 
+             payload: { fleet: fleetRef.current } 
+         }, '*');
+         if (window.parent && window.parent !== window) {
+             window.parent.postMessage({ 
+                 type: 'SYNC_FLEET_DATA', 
+                 payload: { fleet: fleetRef.current } 
+             }, '*');
+         }
+         lastSyncTime = timestamp;
+      }
+      
+      animationFrameId = requestAnimationFrame(animateFleet);
+    };
+    
+    animationFrameId = requestAnimationFrame(animateFleet);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
+  // Auto-Simulation Engine (Traffic Generator from JSON file)
+  useEffect(() => {
+    let timeoutId;
+    let isCancelled = false;
+    let currentTaskIndex = 0;
+    
+    if (!isSimulating || !graphData || gates.length === 0 || slots.length === 0) return;
+
+    const runSimulationLoop = async () => {
+       try {
+          const response = await fetch('/dummy_traffic_data.json');
+          const tasks = await response.json();
+          if (!tasks || tasks.length === 0) return;
+
+          const processNextTask = () => {
+             if (isCancelled) return;
+             
+             const task = tasks[currentTaskIndex];
+             const tempGraph = new Map(graphData);
+             
+             // Xử lý logic chọn Gate ngẫu nhiên
+             const gateId = gates[Math.floor(Math.random() * gates.length)]?.id;
+             
+             if (gateId) {
+                import('../services/routingService').then(({ findShortestPath }) => {
+                   let targetSlot = null;
+                   
+                   // Chọn điểm cuối theo kịch bản trong JSON
+                   if (task.destination === 'SLOT_EMPTY_RANDOM') {
+                      const emptySlots = slots.filter(s => !s.status || s.status === 'empty');
+                      if (emptySlots.length > 0) targetSlot = emptySlots[Math.floor(Math.random() * emptySlots.length)];
+                   } else if (task.origin === 'SLOT_OCCUPIED_RANDOM') {
+                      const occSlots = slots.filter(s => s.status && s.status !== 'empty');
+                      if (occSlots.length > 0) targetSlot = occSlots[Math.floor(Math.random() * occSlots.length)];
+                   }
+                   
+                   if (!targetSlot) {
+                      // Fallback lấy slot bất kỳ nếu không thỏa mãn
+                      targetSlot = slots[Math.floor(Math.random() * slots.length)];
+                   }
+
+                   if (targetSlot) {
+                      // Vẽ đường nối Điểm Đầu -> Điểm Cuối (Leg 1)
+                      const pathIn = findShortestPath(gateId, targetSlot.id, tempGraph);
+                      
+                      if (pathIn.length > 0) {
+                         const truckId = task.id;
+                         fleetRef.current.push({
+                            id: truckId,
+                            type: task.type,
+                            cargoInfo: task.cargoType,
+                            origin: gateId,
+                            destination: 'CALCULATING...', 
+                            path: pathIn,
+                            progress: 0,
+                            status: 'moving',
+                            speed: task.type === 'truck' ? 0.00001 : 0.000007,
+                            currentSegmentIdx: 0,
+                            currentPos: [...pathIn[0]],
+                            isLeg1: true,
+                            leg2Ready: false,
+                            pathOut: null
+                         });
+                         
+                         // Tính ngầm lộ trình thoát ra cổng gần nhất (Lazy pre-computation)
+                         setTimeout(() => {
+                             import('../services/routingService').then(async ({ findShortestPath }) => {
+                                let shortestOutPath = [];
+                                let bestGateOutId = gateId;
+                                for (const g of gates) {
+                                   const pOut = findShortestPath(targetSlot.id, g.id, tempGraph);
+                                   if (pOut.length > 0 && (shortestOutPath.length === 0 || pOut.length < shortestOutPath.length)) {
+                                      shortestOutPath = pOut;
+                                      bestGateOutId = g.id;
+                                   }
+                                   // Chống lag: Nhường CPU lại cho trình duyệt render Frame mới trước khi tính tiếp cổng khác
+                                   await new Promise(resolve => setTimeout(resolve, 2));
+                                }
+                                
+                                const vehicle = fleetRef.current.find(v => v.id === truckId);
+                                if (vehicle) {
+                                   vehicle.pathOut = shortestOutPath.length > 0 ? shortestOutPath : [...pathIn].reverse();
+                                   vehicle.destination = bestGateOutId;
+                                   vehicle.leg2Ready = true;
+                                }
+                             });
+                         }, 10);
+                      }
+                   }
+                });
+             }
+             
+             currentTaskIndex = (currentTaskIndex + 1) % tasks.length;
+             const nextDelay = tasks[currentTaskIndex].delayMs || 3000;
+             timeoutId = setTimeout(processNextTask, nextDelay);
+          };
+          
+          // Bắt đầu vòng lặp với task đầu tiên
+          processNextTask();
+       } catch (error) {
+          console.error("Lỗi đọc file dummy_traffic_data.json:", error);
+       }
+    };
+    
+    runSimulationLoop();
+    return () => {
+       isCancelled = true;
+       clearTimeout(timeoutId);
+    };
+  }, [isSimulating, graphData, gates, slots]);
 
   const handlePolygonComplete = useCallback((latLngs) => {
     const newZone = {
@@ -548,6 +1053,28 @@ const FreePortDigitizer = ({ user }) => {
     }
   };
 
+  // Tự động lưu lên Cloud DB khi người dùng đóng tab hoặc chuyển trang
+  useEffect(() => {
+    const backupToDB = () => {
+      if (user && isDataLoaded) {
+        saveMapData(user.id || user.uid, { storageZones, slots, gates, inventory, activeRoute, portBoundary })
+          .catch(err => console.error("Lỗi Auto-save DB:", err));
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') backupToDB();
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', backupToDB);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', backupToDB);
+    };
+  }, [user, isDataLoaded, storageZones, slots, gates, inventory, activeRoute, portBoundary]);
+
   const handleExportData = () => {
     const data = {
       storageZones,
@@ -709,13 +1236,57 @@ const FreePortDigitizer = ({ user }) => {
                 return distA - distB;
              });
 
-             for (const gate of sortedGates) {
-                const path = findShortestPath(gate.id, targetNodeId, tempGraph);
-                if (path.length > 0) {
-                   setActiveRoute(path);
-                   return; // Dừng lại khi tìm thấy đường
-                }
-             }
+              for (const gate of sortedGates) {
+                 const path = findShortestPath(gate.id, targetNodeId, tempGraph);
+                 if (path.length > 0) {
+                    setActiveRoute(path);
+                    
+                    const pathIn = path;
+                    const truckId = `TRK-${Math.floor(Math.random() * 9000 + 1000)}`;
+                    const vType = Math.random() > 0.3 ? 'truck' : 'agv';
+                    
+                    fleetRef.current.push({
+                       id: truckId,
+                       type: vType,
+                       origin: gate.id,
+                       destination: 'CALCULATING...',
+                       path: pathIn,
+                       progress: 0,
+                       status: 'moving',
+                       speed: vType === 'truck' ? 0.00001 : 0.000007, 
+                       currentSegmentIdx: 0,
+                       currentPos: [...pathIn[0]],
+                       isLeg1: true,
+                       leg2Ready: false,
+                       pathOut: null
+                    });
+                    
+                    // Tính ngầm lộ trình ra
+                    setTimeout(() => {
+                        import('../services/routingService').then(async ({ findShortestPath }) => {
+                           let shortestOutPath = [];
+                           let bestGateOutId = gate.id;
+                           for (const g of allGates) {
+                              const pOut = findShortestPath(targetNodeId, g.id, tempGraph);
+                              if (pOut.length > 0 && (shortestOutPath.length === 0 || pOut.length < shortestOutPath.length)) {
+                                 shortestOutPath = pOut;
+                                 bestGateOutId = g.id;
+                              }
+                              // Chống lag: Nhường CPU cho UI Thread
+                              await new Promise(resolve => setTimeout(resolve, 2));
+                           }
+                           const vehicle = fleetRef.current.find(v => v.id === truckId);
+                           if (vehicle) {
+                              vehicle.pathOut = shortestOutPath.length > 0 ? shortestOutPath : [...pathIn].reverse();
+                              vehicle.destination = bestGateOutId;
+                              vehicle.leg2Ready = true;
+                           }
+                        });
+                    }, 10);
+                    
+                    return; // Dừng lại khi tìm thấy đường
+                 }
+              }
              
              alert('Không có cổng nào có thể kết nối được tới vị trí container này (Đường đi bị đứt đoạn)!');
              
@@ -731,7 +1302,21 @@ const FreePortDigitizer = ({ user }) => {
                 });
                 
                 const path = findShortestPath(startNodeId, targetNodeId, tempGraph);
-                if (path.length > 0) setActiveRoute(path);
+                if (path.length > 0) {
+                   setActiveRoute(path);
+                   fleetRef.current.push({
+                      id: `AGV-${Math.floor(Math.random() * 9000 + 1000)}`,
+                      type: 'agv',
+                      origin: startNodeId,
+                      destination: targetNodeId,
+                      path: path,
+                      progress: 0,
+                      status: 'moving',
+                      speed: 0.000015, // AGV đi chậm
+                      currentSegmentIdx: 0,
+                      currentPos: [...path[0]]
+                   });
+                }
                 else alert('Không tìm thấy đường đi khả thi!');
              } else {
                 alert('Chưa có Cổng (Gate) hoặc bãi Đường (ROAD) nào trên bản đồ để tìm đường!');
@@ -855,15 +1440,15 @@ const FreePortDigitizer = ({ user }) => {
          assignContainer(feature.properties.id, '40ft');
       },
       mouseover: (e) => {
-         setHoveredSlotData({
+         window.dispatchEvent(new CustomEvent('slotHover', { detail: {
            id: feature.properties.id,
            type: feature.properties.status === 'occupied_40' ? '40ft/45ft' : (feature.properties.status === 'occupied_20' ? '20ft' : 'Trống'),
            status: feature.properties.status
-         });
+         }}));
          layer.setStyle({ fillOpacity: 1, weight: 3, color: '#ffffff' });
       },
       mouseout: (e) => {
-         setHoveredSlotData(null);
+         window.dispatchEvent(new CustomEvent('slotHover', { detail: null }));
          layer.setStyle({ fillOpacity: feature.properties.fillOpacity, weight: isLightMap ? 2 : 1, color: feature.properties.color });
       }
     });
@@ -873,6 +1458,7 @@ const FreePortDigitizer = ({ user }) => {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', margin: 0, padding: 0 }}>
       <MapContainer preferCanvas={true} center={defaultCenter} zoom={16} maxZoom={22} ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 0 }}>
+          <MapResizer isActive={isActive} />
         <ZoomTracker onZoomChange={setCurrentZoom} />
         <LayersControl position="bottomleft">
           <LayersControl.BaseLayer checked name="Vệ Tinh (ESRI)">
@@ -883,39 +1469,15 @@ const FreePortDigitizer = ({ user }) => {
           </LayersControl.BaseLayer>
           <LayersControl.Overlay checked name="Lưới Quy Hoạch & Nhà Cửa">
             <FeatureGroup>
-              {portBoundary && (
-                <GeoJSON key={JSON.stringify(portBoundary)} data={portBoundary} style={{ color: '#D50000', weight: 4, fillOpacity: 0.05, dashArray: '10, 10' }} />
-              )}
-              {storageZones.filter(z => z.zoneType !== 'ROAD' && z.zoneType !== 'ROAD_LINE').map(zone => (
-                <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
-                  {(showLabels && zone.name && zone.name !== '') && (
-                    <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
-                      <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
-                    </Tooltip>
-                  )}
-                  <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
-                </Polygon>
-              ))}
-              {storageZones.filter(z => z.zoneType === 'ROAD').map(zone => (
-                <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
-                  {(showLabels && zone.name && zone.name !== '') && (
-                    <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
-                      <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
-                    </Tooltip>
-                  )}
-                  <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
-                </Polygon>
-              ))}
-              {storageZones.filter(z => z.zoneType === 'ROAD_LINE').map(zone => (
-                <Polyline key={zone.id} positions={zone.path} color="#facc15" weight={6} dashArray="10, 10">
-                  {showLabels && (
-                    <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
-                      <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name || 'Đường'} ({zone.id})</span>
-                    </Tooltip>
-                  )}
-                  <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
-                </Polyline>
-              ))}
+              <MemoizedStaticMapLayers 
+                portBoundary={portBoundary}
+                storageZones={storageZones}
+                getPolygonStyle={getPolygonStyle}
+                showLabels={showLabels}
+                handleUpdateZone={handleUpdateZone}
+                handleGenerateGrid={handleGenerateGrid}
+                handleAdjustPadding={handleAdjustPadding}
+              />
               {currentZoom >= 18 && slots.length > 0 && (
                 <SlotLayer 
                   slotGeoJSON={slotGeoJSON} 
@@ -938,6 +1500,31 @@ const FreePortDigitizer = ({ user }) => {
                   </Tooltip>
                 </Polyline>
               )}
+              {/* Vẽ xe (Fleet) đang di chuyển */}
+              {activeFleet.map(v => {
+                if (v.status !== 'moving') return null;
+                return (
+                  <RotatedMarker 
+                     key={v.id} 
+                     id={v.id}
+                     position={v.currentPos} 
+                     icon={v.type === 'truck' ? staticTruckIcon : staticAgvIcon} 
+                     heading={v.heading}
+                     progress={v.progress}
+                  />
+                );
+              })}
+
+              {/* Vẽ CHE (Thiết bị nâng hạ) */}
+              {activeChe.map(che => (
+                 <Marker key={che.id} position={che.currentPos} icon={che.type === 'rtg' ? staticRtgIcon : staticRsIcon} zIndexOffset={1000}>
+                   <Tooltip direction="top" opacity={0.9} permanent={che.status !== 'idle'}>
+                      <span style={{ fontWeight: 'bold', color: che.status === 'idle' ? '#666' : '#eab308' }}>{che.id}</span>
+                      {che.status === 'handling' && ` (${Math.round(che.handlingProgress)}%)`}
+                      {che.status === 'moving_to_slot' && ` (Đang chạy)`}
+                   </Tooltip>
+                 </Marker>
+              ))}
             </FeatureGroup>
           </LayersControl.Overlay>
         </LayersControl>
@@ -982,10 +1569,56 @@ const FreePortDigitizer = ({ user }) => {
           {aiStatus && <div style={{ fontSize: '11px', color: '#8b5cf6', fontStyle: 'italic', textAlign: 'center' }}>{aiStatus}</div>}
         </div>
         
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
+          <button 
+            onClick={handleSyncChe}
+            disabled={isSyncingChe || slots.length === 0}
+            style={{ backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', transition: 'background-color 0.2s', opacity: (isSyncingChe || slots.length === 0) ? 0.7 : 1 }}>
+            {isSyncingChe ? '⏳ Đang đồng bộ...' : '🚜 Sync Phương tiện (CHE)'}
+          </button>
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
+          <button 
+            onClick={() => {
+               if (gates.length === 0 || slots.length === 0) {
+                  alert('Cần có ít nhất 1 Cổng (Gate) và 1 Bãi (Slot) để mô phỏng!');
+                  return;
+               }
+               setIsSimulating(!isSimulating);
+            }} 
+            style={{ 
+               backgroundColor: isSimulating ? '#ef4444' : '#10b981', 
+               color: 'white', border: 'none', padding: '10px 16px', 
+               borderRadius: '8px', cursor: 'pointer', fontWeight: '600', 
+               transition: 'background-color 0.2s',
+               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
+            }}
+          >
+            {isSimulating ? '⏹ Dừng Mô Phỏng (Stop)' : '▶ Chạy Mô Phỏng (Auto Traffic)'}
+          </button>
+        </div>
+        
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
           <input type="checkbox" id="toggle-labels" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} style={{ cursor: 'pointer' }} />
           <label htmlFor="toggle-labels" style={{ fontSize: '13px', color: '#4b5563', cursor: 'pointer', fontWeight: '500' }}>Hiển thị chữ (Tên bãi/Đường)</label>
         </div>
+
+        {activeChe.length > 0 && (
+          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+            <h4 style={{ margin: '0 0 8px 0', color: '#334155', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>Hoạt động Cẩu (CHE)</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
+              {activeChe.map(che => (
+                <div key={che.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', backgroundColor: che.status === 'idle' ? '#f1f5f9' : '#fffbeb', borderRadius: '4px', border: '1px solid', borderColor: che.status === 'idle' ? '#e2e8f0' : '#fde68a' }}>
+                   <span style={{ fontWeight: 'bold', color: '#475569' }}>{che.id} ({che.type === 'rtg' ? 'Cẩu bánh lốp' : 'Xe nâng'})</span>
+                   <span style={{ color: che.status === 'idle' ? '#64748b' : '#d97706', fontWeight: che.status !== 'idle' ? 'bold' : 'normal', fontSize: '11px' }}>
+                      {che.status === 'idle' ? 'Rảnh rỗi' : (che.status === 'moving_to_slot' ? 'Chạy tới Ô...' : `Đang gắp ${Math.round(che.handlingProgress)}%`)}
+                   </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {slots.length > 0 && currentZoom < 18 && (
           <div style={{ marginTop: '5px', padding: '8px', backgroundColor: '#fffbeb', color: '#b45309', borderRadius: '8px', fontSize: '12px', border: '1px solid #fde68a' }}>
@@ -1013,7 +1646,7 @@ const FreePortDigitizer = ({ user }) => {
         <input type="file" id="import-json" accept=".json" style={{ display: 'none' }} onChange={handleImportData} />
       </div>
 
-      <HoverInfoPanel hoveredSlotData={hoveredSlotData} inventory={inventory} />
+      <HoverInfoPanel inventory={inventory} />
     </div>
   );
 };

@@ -139,7 +139,11 @@ spa_script = """
             });
         }
         let currentSlots = [];
+        let currentFleet = [];
         let activeTab = 'containers';
+        let opsSearchQuery = '';
+        let opsFilterValue = 'all';
+        let opsSortValue = 'default';
 
         const renderTable = () => {
             const tbody = document.getElementById('operations-table-body');
@@ -160,41 +164,127 @@ spa_script = """
                     <th class="data-grid-header text-right">Actions</th>
                 `;
                 
-                const occupiedSlots = currentSlots.filter(s => s.status && s.status !== 'empty');
-                if (occupiedSlots.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active containers</td></tr>';
+                let filteredInventory = [...currentInventory];
+                
+                // Apply search filter
+                if (opsSearchQuery) {
+                    const q = opsSearchQuery.toLowerCase();
+                    filteredInventory = filteredInventory.filter(c => {
+                        const cid = c.containerNo.toLowerCase();
+                        const zoneName = c.zoneId.toLowerCase();
+                        return cid.includes(q) || zoneName.includes(q);
+                    });
+                }
+
+                // Apply status filter 
+                if (opsFilterValue !== 'all' && opsFilterValue !== 'empty') {
+                    const filterSize = opsFilterValue === 'occupied_20' ? 20 : 40;
+                    filteredInventory = filteredInventory.filter(c => c.size === filterSize);
+                }
+
+                // Apply sorting
+                if (opsSortValue === 'id_asc') {
+                    filteredInventory.sort((a, b) => a.containerNo.localeCompare(b.containerNo));
+                } else if (opsSortValue === 'id_desc') {
+                    filteredInventory.sort((a, b) => b.containerNo.localeCompare(a.containerNo));
+                } else if (opsSortValue === 'zone_asc') {
+                    filteredInventory.sort((a, b) => a.zoneId.localeCompare(b.zoneId));
+                }
+
+                if (filteredInventory.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active containers found</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = occupiedSlots.map((slot, index) => {
-                    const is20 = slot.status === 'occupied_20';
-                    const typeStr = is20 ? "20' Dry" : "40' HC";
-                    const weight = is20 ? (Math.random() * 15 + 10).toFixed(1) : (Math.random() * 20 + 15).toFixed(1);
-                    const parts = slot.id.split('-');
-                    const zoneName = parts.length >= 3 ? parts.slice(0, -2).join('-') : 'UNK';
-                    const bay = parts.length >= 3 ? parts[parts.length - 2] : '00';
+                tbody.innerHTML = filteredInventory.map((c, index) => {
+                    const typeStr = c.size === 20 ? "20' Dry" : "40' HC";
+                    const weight = c.size === 20 ? (Math.random() * 15 + 10).toFixed(1) : (Math.random() * 20 + 15).toFixed(1);
+                    const bay = c.bay || '00';
+                    const tierStr = `T${c.tier || 1}`;
 
                     const statuses = [
                         { text: 'ACTIVE', bg: 'bg-secondary/10', textCls: 'text-secondary', border: 'border-secondary/20' },
                         { text: 'TRANSIT', bg: 'bg-primary/10', textCls: 'text-primary', border: 'border-primary/30' },
-                        { text: 'HOLD', bg: 'bg-tertiary-container/20', textCls: 'text-tertiary', border: 'border-tertiary/30' },
-                        { text: 'STAGED', bg: 'bg-surface-bright', textCls: 'text-on-surface-variant', border: 'border-outline-variant/30' }
+                        { text: 'HOLD', bg: 'bg-tertiary-container/20', textCls: 'text-tertiary', border: 'border-tertiary/30' }
                     ];
                     const s = statuses[index % statuses.length];
 
                     return `
                     <tr class="data-grid-row">
                         <td class="data-grid-cell text-center text-outline-variant">${index + 1}</td>
-                        <td class="data-grid-cell font-bold text-on-surface">CONT-${slot.id.substring(slot.id.length - 4)}</td>
+                        <td class="data-grid-cell font-bold text-on-surface">
+                            ${c.containerNo}
+                            <span class="ml-2 text-[10px] text-outline">(${tierStr})</span>
+                        </td>
                         <td class="data-grid-cell text-on-surface-variant">${typeStr}</td>
                         <td class="data-grid-cell">${weight}</td>
-                        <td class="data-grid-cell text-outline-variant">${zoneName.substring(0, 8)}</td>
-                        <td class="data-grid-cell text-outline-variant">B-${bay}</td>
+                        <td class="data-grid-cell text-outline-variant">${c.zoneId.substring(0, 8)}</td>
+                        <td class="data-grid-cell text-outline-variant">B-${bay} / R-${c.row}</td>
                         <td class="data-grid-cell">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm ${s.bg} ${s.textCls} border ${s.border}">${s.text}</span>
                         </td>
                         <td class="data-grid-cell text-right">
                             <button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+                        </td>
+                    </tr>
+                    `;
+                }).join('');
+            } else if (activeTab === 'fleet') {
+                title.textContent = 'Fleet & Dispatch Management';
+                thead.innerHTML = `
+                    <th class="data-grid-header w-12 text-center">#</th>
+                    <th class="data-grid-header">Vehicle ID</th>
+                    <th class="data-grid-header">Type</th>
+                    <th class="data-grid-header">Origin</th>
+                    <th class="data-grid-header">Destination</th>
+                    <th class="data-grid-header">Progress</th>
+                    <th class="data-grid-header">Status</th>
+                    <th class="data-grid-header text-right">Actions</th>
+                `;
+
+                let filteredFleet = [...currentFleet];
+
+                if (opsSearchQuery) {
+                    const q = opsSearchQuery.toLowerCase();
+                    filteredFleet = filteredFleet.filter(v => 
+                        v.id.toLowerCase().includes(q) || 
+                        v.origin.toLowerCase().includes(q) || 
+                        v.destination.toLowerCase().includes(q)
+                    );
+                }
+
+                if (filteredFleet.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active fleet vehicles</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = filteredFleet.map((v, index) => {
+                    const isTruck = v.type === 'truck';
+                    const colorClass = isTruck ? 'primary' : 'secondary';
+                    const sBg = isTruck ? 'bg-primary/10' : 'bg-secondary/10';
+                    const sText = isTruck ? 'text-primary' : 'text-secondary';
+                    const sBorder = isTruck ? 'border-primary/30' : 'border-secondary/30';
+
+                    return `
+                    <tr class="data-grid-row">
+                        <td class="data-grid-cell text-center text-outline-variant">${index + 1}</td>
+                        <td class="data-grid-cell font-bold text-on-surface">${v.id}</td>
+                        <td class="data-grid-cell text-outline-variant">${isTruck ? 'External Truck' : 'Internal AGV'}</td>
+                        <td class="data-grid-cell text-on-surface-variant">${v.origin}</td>
+                        <td class="data-grid-cell text-on-surface-variant">${v.destination}</td>
+                        <td class="data-grid-cell">
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 bg-surface-container h-1.5 rounded-full overflow-hidden">
+                                    <div class="bg-${colorClass} h-full" style="width: ${v.progress}%"></div>
+                                </div>
+                                <span class="text-[10px] text-outline-variant w-8">${Math.round(v.progress)}%</span>
+                            </div>
+                        </td>
+                        <td class="data-grid-cell">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm ${sBg} ${sText} border ${sBorder}">${v.status.toUpperCase()}</span>
+                        </td>
+                        <td class="data-grid-cell text-right">
+                            <button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
                         </td>
                     </tr>
                     `;
@@ -211,12 +301,45 @@ spa_script = """
                     <th class="data-grid-header text-right">Actions</th>
                 `;
                 
-                if (currentSlots.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-outline-variant">No slots found</td></tr>';
+                let filteredSlots = [...currentSlots];
+                
+                // Apply search
+                if (opsSearchQuery) {
+                    const q = opsSearchQuery.toLowerCase();
+                    filteredSlots = filteredSlots.filter(s => {
+                        const parts = s.id.split('-');
+                        const zoneName = (parts.length >= 3 ? parts.slice(0, -2).join('-') : 'UNK').toLowerCase();
+                        return s.id.toLowerCase().includes(q) || zoneName.includes(q);
+                    });
+                }
+
+                // Apply filter
+                if (opsFilterValue !== 'all') {
+                    filteredSlots = filteredSlots.filter(s => {
+                        if (opsFilterValue === 'empty') return !s.status || s.status === 'empty';
+                        return s.status === opsFilterValue;
+                    });
+                }
+
+                // Apply sorting
+                if (opsSortValue === 'id_asc') {
+                    filteredSlots.sort((a, b) => a.id.localeCompare(b.id));
+                } else if (opsSortValue === 'id_desc') {
+                    filteredSlots.sort((a, b) => b.id.localeCompare(a.id));
+                } else if (opsSortValue === 'zone_asc') {
+                    filteredSlots.sort((a, b) => {
+                        const za = a.id.split('-').slice(0, -2).join('-');
+                        const zb = b.id.split('-').slice(0, -2).join('-');
+                        return za.localeCompare(zb);
+                    });
+                }
+                
+                if (filteredSlots.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-outline-variant">No slots found matching criteria</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = currentSlots.map((slot, index) => {
+                tbody.innerHTML = filteredSlots.map((slot, index) => {
                     const parts = slot.id.split('-');
                     const row = parts.length >= 3 ? parts[parts.length - 1] : '00';
                     const bay = parts.length >= 3 ? parts[parts.length - 2] : '00';
@@ -248,29 +371,66 @@ spa_script = """
             }
         };
 
-        document.getElementById('tab-btn-containers')?.addEventListener('click', (e) => {
+        const updateTabStyles = () => {
+            const btns = ['containers', 'slots', 'fleet'];
+            btns.forEach(id => {
+                const btn = document.getElementById(`tab-btn-${id}`);
+                if (!btn) return;
+                if (activeTab === id) {
+                    btn.className = "px-4 py-1.5 text-sm font-medium rounded-md bg-primary/20 text-primary transition-colors";
+                } else {
+                    btn.className = "px-4 py-1.5 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors";
+                }
+            });
+        };
+
+        document.getElementById('tab-btn-containers')?.addEventListener('click', () => {
             activeTab = 'containers';
-            e.target.className = "px-4 py-1.5 text-sm font-medium rounded-md bg-primary/20 text-primary transition-colors";
-            document.getElementById('tab-btn-slots').className = "px-4 py-1.5 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors";
+            updateTabStyles();
             renderTable();
         });
 
-        document.getElementById('tab-btn-slots')?.addEventListener('click', (e) => {
+        document.getElementById('tab-btn-slots')?.addEventListener('click', () => {
             activeTab = 'slots';
-            e.target.className = "px-4 py-1.5 text-sm font-medium rounded-md bg-primary/20 text-primary transition-colors";
-            document.getElementById('tab-btn-containers').className = "px-4 py-1.5 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors";
+            updateTabStyles();
             renderTable();
         });
+
+        document.getElementById('tab-btn-fleet')?.addEventListener('click', () => {
+            activeTab = 'fleet';
+            updateTabStyles();
+            renderTable();
+        });
+
+        // Event listeners for Toolbar
+        document.getElementById('ops-search')?.addEventListener('input', (e) => {
+            opsSearchQuery = e.target.value;
+            renderTable();
+        });
+        document.getElementById('ops-filter')?.addEventListener('change', (e) => {
+            opsFilterValue = e.target.value;
+            renderTable();
+        });
+        document.getElementById('ops-sort')?.addEventListener('change', (e) => {
+            opsSortValue = e.target.value;
+            renderTable();
+        });
+
+        let currentInventory = [];
 
         window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'SYNC_PORT_DATA') {
-                const { slots } = event.data.payload;
-                if (slots) {
-                    currentSlots = slots;
-                    renderTable();
-                }
+                const { slots, inventory } = event.data.payload;
+                if (slots) currentSlots = slots;
+                if (inventory) currentInventory = inventory;
+                renderTable();
             } else if (event.data && event.data.type === 'SYNC_FLEET_DATA') {
                 const { fleet } = event.data.payload;
+                if (fleet) {
+                    currentFleet = fleet;
+                    if (activeTab === 'fleet') renderTable();
+                }
+
                 const dispatchList = document.getElementById('active-dispatches-list');
                 if (dispatchList && fleet) {
                     if (fleet.length === 0) {

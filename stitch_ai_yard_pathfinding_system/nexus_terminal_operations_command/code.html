@@ -270,6 +270,7 @@
     <div class="flex items-center gap-1 mt-1 bg-surface-container p-1 rounded-lg w-max border border-outline-variant/20">
         <button id="tab-btn-containers" class="px-4 py-1.5 text-sm font-medium rounded-md bg-primary/20 text-primary transition-colors">Containers</button>
         <button id="tab-btn-slots" class="px-4 py-1.5 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors">Yards / Slots</button>
+        <button id="tab-btn-fleet" class="px-4 py-1.5 text-sm font-medium rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-colors">Logistics Fleet</button>
     </div>
 </div>
 <div class="flex items-center gap-4">
@@ -290,6 +291,31 @@
                             Export CSV
                         </button>
 </div>
+</div>
+<!-- Toolbar: Find, Filter, Sort -->
+<div class="p-3 bg-surface-container border-b border-outline-variant/30 flex gap-4 items-center">
+    <div class="relative flex-1 max-w-xs">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+        <input type="text" id="ops-search" placeholder="Search ID or Zone..." class="w-full bg-surface border border-outline-variant/40 rounded-lg py-1.5 pl-9 pr-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary transition-all outline-none placeholder:text-outline/50"/>
+    </div>
+    <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-outline text-[18px]">filter_list</span>
+        <select id="ops-filter" class="bg-surface border border-outline-variant/40 rounded-lg py-1.5 px-3 text-sm text-on-surface focus:border-primary outline-none cursor-pointer">
+            <option value="all">All Status</option>
+            <option value="empty">Empty</option>
+            <option value="occupied_20">Occupied (20ft)</option>
+            <option value="occupied_40">Occupied (40ft)</option>
+        </select>
+    </div>
+    <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-outline text-[18px]">sort</span>
+        <select id="ops-sort" class="bg-surface border border-outline-variant/40 rounded-lg py-1.5 px-3 text-sm text-on-surface focus:border-primary outline-none cursor-pointer">
+            <option value="default">Default Order</option>
+            <option value="id_asc">ID (A-Z)</option>
+            <option value="id_desc">ID (Z-A)</option>
+            <option value="zone_asc">Zone (A-Z)</option>
+        </select>
+    </div>
 </div>
 <!-- The Grid -->
 <div class="flex-1 overflow-auto">

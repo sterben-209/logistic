@@ -1,0 +1,12 @@
+[
+  { "id": "CHE-RTG-001", "type": "rtg" },
+  { "id": "CHE-RTG-002", "type": "rtg" },
+  { "id": "CHE-RTG-003", "type": "rtg" },
+  { "id": "CHE-RTG-004", "type": "rtg" },
+  { "id": "CHE-RTG-005", "type": "rtg" },
+  { "id": "CHE-RS-001", "type": "reach_stacker" },
+  { "id": "CHE-RS-002", "type": "reach_stacker" },
+  { "id": "CHE-RS-003", "type": "reach_stacker" },
+  { "id": "CHE-RS-004", "type": "reach_stacker" },
+  { "id": "CHE-RS-005", "type": "reach_stacker" }
+]

@@ -52,3 +52,42 @@ export const loadMapData = async (userId) => {
   }
   return data?.data || null;
 };
+
+// Lưu dữ liệu CHE (Supabase)
+export const syncCheData = async (cheList) => {
+  const { error } = await supabase
+    .from('che_equipment')
+    .upsert(cheList);
+  if (error) throw error;
+};
+
+// Tải dữ liệu CHE (Supabase)
+export const loadCheData = async () => {
+  const { data, error } = await supabase
+    .from('che_equipment')
+    .select('*');
+  if (error) throw error;
+  return data;
+};
+
+// Tải dữ liệu CHE cục bộ (Fallback)
+export const loadLocalCheData = async () => {
+   const response = await fetch('/dummy_che_data.json');
+   const data = await response.json();
+   return data;
+};
+
+// Lưu dữ liệu Xe tải (Supabase)
+export const syncTruckData = async (truckList) => {
+  const { error } = await supabase
+    .from('vehicles')
+    .upsert(truckList);
+  if (error) throw error;
+};
+
+// Tải dữ liệu Xe tải cục bộ (Fallback)
+export const loadLocalTruckData = async () => {
+   const response = await fetch('/dummy_vehicles.json');
+   const data = await response.json();
+   return data;
+};

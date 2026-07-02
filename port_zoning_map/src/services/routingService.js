@@ -1,41 +1,45 @@
 import * as turf from '@turf/turf';
 
+export const getDistance = (nodeA, nodeB) => {
+  const dx = nodeA.coordinates[1] - nodeB.coordinates[1];
+  const dy = nodeA.coordinates[0] - nodeB.coordinates[0];
+  return Math.sqrt(dx*dx + dy*dy) * 111000;
+};
+
 export const heuristic = (nodeA, nodeB) => {
-  const dx = Math.abs(nodeA.coordinates[1] - nodeB.coordinates[1]);
-  const dy = Math.abs(nodeA.coordinates[0] - nodeB.coordinates[0]);
-  return (dx + dy) * 111000;
+  return getDistance(nodeA, nodeB);
 };
 
 export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
   const graph = new Map();
   const roadLines = storageZones.filter(z => z.zoneType === 'ROAD_LINE');
   
-  // 1. Generate Graph from ROAD_LINEs
-  const roadLineNodesMap = new Map(); // roadLineId -> Array of nodes
+  const roadLineSegmentsMap = new Map();
   
   roadLines.forEach(roadLine => {
     const coords = roadLine.pathLatLngs.map(p => [p.lng, p.lat]);
     if (coords.length < 2) return;
     
-    const nodesInLine = [];
-    coords.forEach((coord, idx) => {
-      const id = `road-${roadLine.id}-${idx}`;
-      const node = { id, roadId: roadLine.id, coordinates: [coord[1], coord[0]], type: 'ROAD_CELL', edges: [] };
-      graph.set(id, node);
-      nodesInLine.push(node);
-    });
-    
-    // Connect consecutive vertices
-    for (let i = 0; i < nodesInLine.length - 1; i++) {
-      const dist = heuristic(nodesInLine[i], nodesInLine[i+1]);
-      nodesInLine[i].edges.push({ to: nodesInLine[i+1].id, distance: dist });
-      nodesInLine[i+1].edges.push({ to: nodesInLine[i].id, distance: dist });
+    const segments = [];
+    for (let i = 0; i < coords.length - 1; i++) {
+      segments.push([]);
     }
+    roadLineSegmentsMap.set(roadLine.id, segments);
     
-    roadLineNodesMap.set(roadLine.id, nodesInLine);
+    for (let i = 0; i < coords.length; i++) {
+      const id = `road-${roadLine.id}-${i}`;
+      const node = { id, roadId: roadLine.id, coordinates: [coords[i][1], coords[i][0]], type: 'ROAD_CELL', edges: [] };
+      graph.set(id, node);
+      
+      if (i < coords.length - 1) {
+         segments[i].push({ node, t: 0 });
+      }
+      if (i > 0) {
+         segments[i - 1].push({ node, t: 1 });
+      }
+    }
   });
 
-  // Precompute lines and bounding boxes
   const precomputedRoadLines = roadLines.map(roadLine => {
     const coords = roadLine.pathLatLngs.map(p => [p.lng, p.lat]);
     if (coords.length < 2) return null;
@@ -47,9 +51,7 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     };
   }).filter(Boolean);
 
-  // Helper function to snap a point to the nearest unblocked roadLine
   const snapToRoad = (pointCoord, maxDist, ignoreId = null, targetRoadLineId = null) => {
-    const pt = turf.point([pointCoord[1], pointCoord[0]]); // [lng, lat]
     let bestSnap = null;
     let minDist = maxDist;
     const searchRadiusDeg = maxDist / 100000;
@@ -73,7 +75,7 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
         const wx = coords[i+1][0];
         const wy = coords[i+1][1];
         
-        const l2 = (wx - vx)**2 + (wy - vy)**2;
+        const l2 = (wx - vx)**2 + (wy - wy)**2;
         let t = 0;
         if (l2 > 0) {
           t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
@@ -90,9 +92,10 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
           minDist = distMeters;
           bestSnap = {
             roadLineId: roadLineData.id,
-            coordinates: [projY, projX], // [lat, lng]
+            coordinates: [projY, projX],
             segmentIndex: i,
-            distance: distMeters
+            distance: distMeters,
+            t: t
           };
         }
       }
@@ -101,7 +104,6 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     return bestSnap;
   };
 
-  // Connect intersections accurately using turf.lineIntersect
   for (let i = 0; i < precomputedRoadLines.length; i++) {
     for (let j = i + 1; j < precomputedRoadLines.length; j++) {
       const line1 = precomputedRoadLines[i];
@@ -115,7 +117,6 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
         const intNode = { id: intId, coordinates: [lat, lng], type: 'ROAD_CELL', edges: [] };
         graph.set(intId, intNode);
 
-        // Link to line 1
         const snap1 = snapToRoad([lat, lng], 5, null, line1.id);
         if (snap1) {
           const snapNodeId1 = `snap1-${intId}`;
@@ -123,23 +124,9 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
           graph.set(snapNodeId1, snapNode1);
           intNode.edges.push({ to: snapNodeId1, distance: snap1.distance });
           snapNode1.edges.push({ to: intId, distance: snap1.distance });
-          
-          const roadNodes = roadLineNodesMap.get(snap1.roadLineId);
-          const nodeA = roadNodes[snap1.segmentIndex];
-          const nodeB = roadNodes[snap1.segmentIndex + 1];
-          if (nodeA) {
-             const d = heuristic(snapNode1, nodeA);
-             snapNode1.edges.push({ to: nodeA.id, distance: d });
-             nodeA.edges.push({ to: snapNodeId1, distance: d });
-          }
-          if (nodeB) {
-             const d = heuristic(snapNode1, nodeB);
-             snapNode1.edges.push({ to: nodeB.id, distance: d });
-             nodeB.edges.push({ to: snapNodeId1, distance: d });
-          }
+          roadLineSegmentsMap.get(snap1.roadLineId)[snap1.segmentIndex].push({ node: snapNode1, t: snap1.t });
         }
 
-        // Link to line 2
         const snap2 = snapToRoad([lat, lng], 5, null, line2.id);
         if (snap2) {
           const snapNodeId2 = `snap2-${intId}`;
@@ -147,55 +134,33 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
           graph.set(snapNodeId2, snapNode2);
           intNode.edges.push({ to: snapNodeId2, distance: snap2.distance });
           snapNode2.edges.push({ to: intId, distance: snap2.distance });
-          
-          const roadNodes = roadLineNodesMap.get(snap2.roadLineId);
-          const nodeA = roadNodes[snap2.segmentIndex];
-          const nodeB = roadNodes[snap2.segmentIndex + 1];
-          if (nodeA) {
-             const d = heuristic(snapNode2, nodeA);
-             snapNode2.edges.push({ to: nodeA.id, distance: d });
-             nodeA.edges.push({ to: snapNodeId2, distance: d });
-          }
-          if (nodeB) {
-             const d = heuristic(snapNode2, nodeB);
-             snapNode2.edges.push({ to: nodeB.id, distance: d });
-             nodeB.edges.push({ to: snapNodeId2, distance: d });
-          }
+          roadLineSegmentsMap.get(snap2.roadLineId)[snap2.segmentIndex].push({ node: snapNode2, t: snap2.t });
         }
       });
     }
   }
 
-  // Connect T-junctions and close vertices (e.g. drawn slightly short)
-  for (const nodes of roadLineNodesMap.values()) {
-    for (const node of nodes) {
-      const snap = snapToRoad(node.coordinates, 50, node.roadId); // Tăng lên 50m để dễ dàng nối mạng lưới đường
-      if (snap) {
-        const snapNodeId = `tsnap-${node.id}`;
-        const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
-        graph.set(snapNodeId, snapNode);
-        
-        node.edges.push({ to: snapNodeId, distance: snap.distance });
-        snapNode.edges.push({ to: node.id, distance: snap.distance });
-        
-        const roadNodes = roadLineNodesMap.get(snap.roadLineId);
-        const nodeA = roadNodes[snap.segmentIndex];
-        const nodeB = roadNodes[snap.segmentIndex + 1];
-        if (nodeA) {
-           const d = heuristic(snapNode, nodeA);
-           snapNode.edges.push({ to: nodeA.id, distance: d });
-           nodeA.edges.push({ to: snapNodeId, distance: d });
-        }
-        if (nodeB) {
-           const d = heuristic(snapNode, nodeB);
-           snapNode.edges.push({ to: nodeB.id, distance: d });
-           nodeB.edges.push({ to: snapNodeId, distance: d });
+  for (const segments of roadLineSegmentsMap.values()) {
+    for (const segment of segments) {
+      // Dùng mảng tạm để duyệt tránh infinite loop khi push thêm phần tử vào chính segment này
+      const originalNodes = segment.filter(item => item.node.type === 'ROAD_CELL' && (item.t === 0 || item.t === 1));
+      
+      for (const {node, t} of originalNodes) {
+        const snap = snapToRoad(node.coordinates, 5, node.roadId); 
+        if (snap) {
+          const snapNodeId = `tsnap-${node.id}`;
+          const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
+          graph.set(snapNodeId, snapNode);
+          
+          node.edges.push({ to: snapNodeId, distance: snap.distance });
+          snapNode.edges.push({ to: node.id, distance: snap.distance });
+          
+          roadLineSegmentsMap.get(snap.roadLineId)[snap.segmentIndex].push({ node: snapNode, t: snap.t });
         }
       }
     }
   }
 
-  // 2. Add Gates and snap to ROAD_LINE
   gates.forEach(gate => {
     if (!gate || !gate.latLng) return;
     const lat = gate.latLng.lat !== undefined ? gate.latLng.lat : gate.latLng[0];
@@ -203,102 +168,234 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     const node = { id: gate.id, coordinates: [lat, lng], type: 'GATE', edges: [] };
     graph.set(gate.id, node);
     
-    const snap = snapToRoad([lat, lng], 2000); // Gates have a 2000m snap range
+    const snap = snapToRoad([lat, lng], 2000);
     if (snap) {
       const snapNodeId = `snap-${gate.id}`;
       const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
       graph.set(snapNodeId, snapNode);
       
-      // Link GATE to SNAP
       node.edges.push({ to: snapNodeId, distance: snap.distance });
       snapNode.edges.push({ to: gate.id, distance: snap.distance });
       
-      // Link SNAP to the two ends of the segment
-      const roadNodes = roadLineNodesMap.get(snap.roadLineId);
-      const nodeA = roadNodes[snap.segmentIndex];
-      const nodeB = roadNodes[snap.segmentIndex + 1];
-      
-      if (nodeA) {
-        const d = heuristic(snapNode, nodeA);
-        snapNode.edges.push({ to: nodeA.id, distance: d });
-        nodeA.edges.push({ to: snapNodeId, distance: d });
-      }
-      if (nodeB) {
-        const d = heuristic(snapNode, nodeB);
-        snapNode.edges.push({ to: nodeB.id, distance: d });
-        nodeB.edges.push({ to: snapNodeId, distance: d });
-      }
+      roadLineSegmentsMap.get(snap.roadLineId)[snap.segmentIndex].push({ node: snapNode, t: snap.t });
     }
   });
 
-  // 3. Add Slots and snap to ROAD_LINE
   slots.forEach(slot => {
     const lat = slot.path.reduce((sum, p) => sum + p[0], 0) / slot.path.length;
     const lng = slot.path.reduce((sum, p) => sum + p[1], 0) / slot.path.length;
     const node = { id: slot.id, coordinates: [lat, lng], type: 'SLOT', edges: [] };
     graph.set(slot.id, node);
     
-    const snap = snapToRoad([lat, lng], 2000, slot.id); // Increased snap range to 2000m
+    const snap = snapToRoad([lat, lng], 2000, slot.id);
     if (snap) {
       const snapNodeId = `snap-${slot.id}`;
       const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
       graph.set(snapNodeId, snapNode);
       
-      // Link SLOT to SNAP
       node.edges.push({ to: snapNodeId, distance: snap.distance });
       snapNode.edges.push({ to: slot.id, distance: snap.distance });
       
-      // Link SNAP to the two ends of the segment
-      const roadNodes = roadLineNodesMap.get(snap.roadLineId);
-      const nodeA = roadNodes[snap.segmentIndex];
-      const nodeB = roadNodes[snap.segmentIndex + 1];
-      
-      if (nodeA) {
-        const d = heuristic(snapNode, nodeA);
-        snapNode.edges.push({ to: nodeA.id, distance: d });
-        nodeA.edges.push({ to: snapNodeId, distance: d });
-      }
-      if (nodeB) {
-        const d = heuristic(snapNode, nodeB);
-        snapNode.edges.push({ to: nodeB.id, distance: d });
-        nodeB.edges.push({ to: snapNodeId, distance: d });
-      }
+      roadLineSegmentsMap.get(snap.roadLineId)[snap.segmentIndex].push({ node: snapNode, t: snap.t });
     }
   });
 
+  for (const segments of roadLineSegmentsMap.values()) {
+    for (const segment of segments) {
+      segment.sort((a, b) => a.t - b.t);
+      for (let k = 0; k < segment.length - 1; k++) {
+        const node1 = segment[k].node;
+        const node2 = segment[k+1].node;
+        if (node1.id !== node2.id) {
+          const d = heuristic(node1, node2);
+          node1.edges.push({ to: node2.id, distance: d });
+          node2.edges.push({ to: node1.id, distance: d });
+        }
+      }
+    }
+  }
+
   console.log(`[A* Centerline] Graph built: ${graph.size} total nodes, ${slots.length} slots, ${gates.length} gates.`);
+  pathCache.clear(); 
+  precomputeAllPaths(graph, gates);
   return graph;
+};
+
+class MinHeap {
+  constructor() { this.heap = []; }
+  push(node, score) {
+    this.heap.push({ node, score });
+    this._bubbleUp(this.heap.length - 1);
+  }
+  pop() {
+    if (this.heap.length === 0) return null;
+    const min = this.heap[0];
+    const end = this.heap.pop();
+    if (this.heap.length > 0) {
+      this.heap[0] = end;
+      this._sinkDown(0);
+    }
+    return min;
+  }
+  _bubbleUp(idx) {
+    const element = this.heap[idx];
+    while (idx > 0) {
+      let parentIdx = Math.floor((idx - 1) / 2);
+      let parent = this.heap[parentIdx];
+      if (element.score >= parent.score) break;
+      this.heap[parentIdx] = element;
+      this.heap[idx] = parent;
+      idx = parentIdx;
+    }
+  }
+  _sinkDown(idx) {
+    const length = this.heap.length;
+    const element = this.heap[idx];
+    while (true) {
+      let leftChildIdx = 2 * idx + 1;
+      let rightChildIdx = 2 * idx + 2;
+      let leftChild, rightChild;
+      let swap = null;
+
+      if (leftChildIdx < length) {
+        leftChild = this.heap[leftChildIdx];
+        if (leftChild.score < element.score) swap = leftChildIdx;
+      }
+      if (rightChildIdx < length) {
+        rightChild = this.heap[rightChildIdx];
+        if ((swap === null && rightChild.score < element.score) || (swap !== null && rightChild.score < leftChild.score)) {
+          swap = rightChildIdx;
+        }
+      }
+      if (swap === null) break;
+      this.heap[idx] = this.heap[swap];
+      this.heap[swap] = element;
+      idx = swap;
+    }
+  }
+  isEmpty() { return this.heap.length === 0; }
+}
+
+export let ssspCameFromCache = new Map();
+let pathCache = new Map();
+
+const precomputeAllPaths = (graph, gates) => {
+   ssspCameFromCache.clear();
+   const t0 = performance.now();
+   
+   gates.forEach(gate => {
+      const gateId = gate.id;
+      if (!graph.has(gateId)) return;
+      
+      const cameFrom = new Map();
+      const gScore = new Map();
+      const openQueue = new MinHeap();
+      
+      gScore.set(gateId, 0);
+      openQueue.push(gateId, 0);
+      
+      while (!openQueue.isEmpty()) {
+         const minObj = openQueue.pop();
+         const current = minObj.node;
+         
+         if (minObj.score > (gScore.get(current) || Infinity)) continue;
+         
+         const currentNode = graph.get(current);
+         if (!currentNode || !currentNode.edges) continue;
+         
+         for (const edge of currentNode.edges) {
+            const neighbor = edge.to;
+            let turnPenalty = 0;
+            
+            if (cameFrom.has(current)) {
+               const prev = cameFrom.get(current);
+               const prevNode = graph.get(prev);
+               const nextNode = graph.get(neighbor);
+               
+               if (prevNode && nextNode) {
+                 const dx1 = currentNode.coordinates[1] - prevNode.coordinates[1];
+                 const dy1 = currentNode.coordinates[0] - prevNode.coordinates[0];
+                 const dx2 = nextNode.coordinates[1] - currentNode.coordinates[1];
+                 const dy2 = nextNode.coordinates[0] - currentNode.coordinates[0];
+                 
+                 const dot = dx1*dx2 + dy1*dy2;
+                 const len1 = Math.sqrt(dx1*dx1 + dy1*dy1);
+                 const len2 = Math.sqrt(dx2*dx2 + dy2*dy2);
+                 
+                 if (len1 > 0 && len2 > 0) {
+                     const cosTheta = dot / (len1 * len2);
+                     if (cosTheta < 0.9) turnPenalty = 20;
+                 }
+               }
+            }
+            
+            const tentativeG = gScore.get(current) + edge.distance + turnPenalty;
+            if (tentativeG < (gScore.get(neighbor) === undefined ? Infinity : gScore.get(neighbor))) {
+               cameFrom.set(neighbor, current);
+               gScore.set(neighbor, tentativeG);
+               openQueue.push(neighbor, tentativeG);
+            }
+         }
+      }
+      ssspCameFromCache.set(gateId, cameFrom);
+   });
+   
+   console.log(`[SSSP Precompute] Finished in ${(performance.now() - t0).toFixed(2)}ms for ${gates.length} gates.`);
 };
 
 export const findShortestPath = (startNodeId, targetNodeId, graph) => {
   if (!graph.has(startNodeId) || !graph.has(targetNodeId)) return [];
-
-  const openSet = new Set([startNodeId]);
-  const cameFrom = new Map();
   
+  // KIỂM TRA SSSP CACHE TRƯỚC (Thời gian: O(L) ~ 0.001ms)
+  if (ssspCameFromCache.has(startNodeId)) {
+      const cameFrom = ssspCameFromCache.get(startNodeId);
+      if (cameFrom.has(targetNodeId)) {
+          const path = [];
+          let curr = targetNodeId;
+          while (cameFrom.has(curr)) {
+            path.unshift(graph.get(curr).coordinates);
+            curr = cameFrom.get(curr);
+          }
+          path.unshift(graph.get(startNodeId).coordinates);
+          return path;
+      }
+  } else if (ssspCameFromCache.has(targetNodeId)) {
+      // Trường hợp ngược lại (Slot -> Gate)
+      const cameFrom = ssspCameFromCache.get(targetNodeId);
+      if (cameFrom.has(startNodeId)) {
+          const path = [];
+          let curr = startNodeId;
+          while (cameFrom.has(curr)) {
+            path.unshift(graph.get(curr).coordinates);
+            curr = cameFrom.get(curr);
+          }
+          path.unshift(graph.get(targetNodeId).coordinates);
+          return path.reverse();
+      }
+  }
+
+  // FALLBACK SANG A* NẾU KHÔNG CÓ TRONG SSSP (Ví dụ Slot -> Slot)
+  const cacheKey = `${startNodeId}->${targetNodeId}`;
+  if (pathCache.has(cacheKey)) {
+      return [...pathCache.get(cacheKey)];
+  }
+
+  const openQueue = new MinHeap();
+  const cameFrom = new Map();
   const gScore = new Map();
   const fScore = new Map();
   
-  for (const [id] of graph) {
-    gScore.set(id, Infinity);
-    fScore.set(id, Infinity);
-  }
-  
   gScore.set(startNodeId, 0);
-  fScore.set(startNodeId, heuristic(graph.get(startNodeId), graph.get(targetNodeId)));
+  const startF = heuristic(graph.get(startNodeId), graph.get(targetNodeId));
+  fScore.set(startNodeId, startF);
+  openQueue.push(startNodeId, startF);
   
-  while (openSet.size > 0) {
-    let current = null;
-    let lowestF = Infinity;
-    for (const id of openSet) {
-      const score = fScore.get(id);
-      if (score < lowestF) {
-        lowestF = score;
-        current = id;
-      }
-    }
+  while (!openQueue.isEmpty()) {
+    const minObj = openQueue.pop();
+    const current = minObj.node;
     
-    if (current === null) break;
+    // Bỏ qua nếu đã có đường tốt hơn được xử lý
+    if (minObj.score > (fScore.get(current) || Infinity)) continue;
     
     if (current === targetNodeId) {
       const path = [];
@@ -308,10 +405,10 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
         curr = cameFrom.get(curr);
       }
       path.unshift(graph.get(startNodeId).coordinates);
-      return path;
+      pathCache.set(cacheKey, path);
+      return [...path];
     }
     
-    openSet.delete(current);
     const currentNode = graph.get(current);
     
     for (const edge of currentNode.edges) {
@@ -342,24 +439,20 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
          }
       }
       
-      const tentativeG = gScore.get(current) + edge.distance + turnPenalty;
+      const currentG = gScore.get(current);
+      const tentativeG = (currentG !== undefined ? currentG : Infinity) + edge.distance + turnPenalty;
       
-      if (tentativeG < gScore.get(neighbor)) {
+      const neighborG = gScore.get(neighbor);
+      if (tentativeG < (neighborG !== undefined ? neighborG : Infinity)) {
         cameFrom.set(neighbor, current);
         gScore.set(neighbor, tentativeG);
         fScore.set(neighbor, tentativeG + heuristic(graph.get(neighbor), graph.get(targetNodeId)));
-        openSet.add(neighbor);
+        openQueue.push(neighbor, fScore.get(neighbor));
       }
     }
   }
   
   return [];
 };
+
 export const buildGraph = buildDynamicGraph;
-
-
-
-
-
-
-

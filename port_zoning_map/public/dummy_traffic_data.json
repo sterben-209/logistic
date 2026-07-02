@@ -1,0 +1,66 @@
+[
+  {
+    "id": "TRK-1001",
+    "type": "truck",
+    "origin": "GATE_RANDOM",
+    "destination": "SLOT_EMPTY_RANDOM",
+    "cargoType": "40ft-DRY",
+    "delayMs": 2000
+  },
+  {
+    "id": "AGV-2002",
+    "type": "agv",
+    "origin": "GATE_RANDOM",
+    "destination": "SLOT_EMPTY_RANDOM",
+    "cargoType": "20ft-REEFER",
+    "delayMs": 4000
+  },
+  {
+    "id": "TRK-3003",
+    "type": "truck",
+    "origin": "SLOT_OCCUPIED_RANDOM",
+    "destination": "GATE_RANDOM",
+    "cargoType": "40ft-HC",
+    "delayMs": 3000
+  },
+  {
+    "id": "AGV-4004",
+    "type": "agv",
+    "origin": "GATE_RANDOM",
+    "destination": "SLOT_EMPTY_RANDOM",
+    "cargoType": "20ft-DRY",
+    "delayMs": 2000
+  },
+  {
+    "id": "TRK-5005",
+    "type": "truck",
+    "origin": "SLOT_OCCUPIED_RANDOM",
+    "destination": "GATE_RANDOM",
+    "cargoType": "40ft-REEFER",
+    "delayMs": 5000
+  },
+  {
+    "id": "TRK-6006",
+    "type": "truck",
+    "origin": "GATE_RANDOM",
+    "destination": "SLOT_EMPTY_RANDOM",
+    "cargoType": "40ft-DRY",
+    "delayMs": 3000
+  },
+  {
+    "id": "AGV-7007",
+    "type": "agv",
+    "origin": "SLOT_OCCUPIED_RANDOM",
+    "destination": "GATE_RANDOM",
+    "cargoType": "20ft-DRY",
+    "delayMs": 4000
+  },
+  {
+    "id": "TRK-8008",
+    "type": "truck",
+    "origin": "GATE_RANDOM",
+    "destination": "SLOT_EMPTY_RANDOM",
+    "cargoType": "40ft-HC",
+    "delayMs": 2000
+  }
+]
