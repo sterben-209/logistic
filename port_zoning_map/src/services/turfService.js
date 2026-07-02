@@ -17,7 +17,7 @@ const getLongestEdgeAngle = (coords) => {
   return bestBearing;
 };
 
-export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', obstacleGeoJSONs = []) => {
+export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', obstacleGeoJSONs = [], customBearing = null) => {
   if (!leafletLatLngs || leafletLatLngs.length < 3) return [];
   
   // Turf yêu cầu [lng, lat]
@@ -32,8 +32,10 @@ export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', 
   const area = turf.area(polygon);
   console.log(`[TURF] Diện tích bãi vẽ: ${area.toFixed(2)} m²`);
   
-  // Tính góc xoay dựa trên cạnh dài nhất
-  let baseBearing = getLongestEdgeAngle(coords);
+  // Tính góc xoay dựa trên cạnh dài nhất hoặc dùng customBearing
+  let baseBearing = (customBearing !== null && customBearing !== undefined)
+    ? customBearing
+    : getLongestEdgeAngle(coords);
   // Cố gắng cho hướng bãi nằm ngang/dọc tương đối với cạnh dài nhất
   // baseBearing là góc của chiều dọc container (13m)
   
@@ -99,16 +101,23 @@ export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', 
       }
 
       if (isInsideZone) {
-        // Đảm bảo KHÔNG có góc nào của slot đâm vào chướng ngại vật (đường/nhà)
+        // Đảm bảo KHÔNG CÓ BẤT KỲ ĐIỂM GIAO CẮT NÀO với chướng ngại vật (đường/nhà)
+        // Tạo Polygon đóng kín từ 4 góc (thứ tự: TL -> TR -> BR -> BL -> TL)
+        const slotCoords = [
+          tl.geometry.coordinates,
+          tr.geometry.coordinates,
+          br.geometry.coordinates,
+          bl.geometry.coordinates,
+          tl.geometry.coordinates
+        ];
+        const slotPoly = turf.polygon([slotCoords]);
+
         let isOverlapping = false;
         for (const obs of obstacleGeoJSONs) {
-          for (const corner of corners) {
-            if (turf.booleanPointInPolygon(corner, obs)) {
-              isOverlapping = true;
-              break;
-            }
+          if (turf.booleanIntersects(slotPoly, obs)) {
+            isOverlapping = true;
+            break;
           }
-          if (isOverlapping) break;
         }
         
         if (!isOverlapping) {
@@ -119,7 +128,7 @@ export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', 
           const rowStr = String(rowNum).padStart(2, '0');
           const bayStr = String(bayNum).padStart(2, '0');
           
-          const isoId = `${zoneName}-${bayStr}-${rowStr}`;
+          const isoId = `${zoneId}-${bayStr}-${rowStr}`;
 
           slots.push({
             id: isoId, // Đánh số ISO Bay-Row
@@ -139,5 +148,38 @@ export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', 
     }
   }
   
-  return slots;
+  return { slots, metadata: { bearing: baseBearing } };
+};
+export const createFlatBufferPolygon = (lineString, width) => {
+  const coords = lineString.geometry.coordinates; // [[lng, lat], ...]
+  const half = width / 2;
+  const polys = [];
+  
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p1 = coords[i];
+    const p2 = coords[i+1];
+    
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len === 0) continue;
+    
+    const nx = -dy / len;
+    const ny = dx / len;
+    
+    const lat = p1[1];
+    const metersPerLat = 111320;
+    const metersPerLng = 111320 * Math.cos(lat * Math.PI / 180);
+    
+    const dxDeg = (nx * half) / metersPerLng;
+    const dyDeg = (ny * half) / metersPerLat;
+    
+    const lp1 = [p1[0] + dxDeg, p1[1] + dyDeg];
+    const rp1 = [p1[0] - dxDeg, p1[1] - dyDeg];
+    const lp2 = [p2[0] + dxDeg, p2[1] + dyDeg];
+    const rp2 = [p2[0] - dxDeg, p2[1] - dyDeg];
+    
+    polys.push(turf.polygon([[lp1, lp2, rp2, rp1, lp1]]));
+  }
+  return polys;
 };

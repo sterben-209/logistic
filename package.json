@@ -1,0 +1,13 @@
+{
+  "name": "logistic",
+  "version": "1.0.0",
+  "description": "Fullstack logistic system",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:stitch\" \"npm run dev:map\"",
+    "dev:stitch": "cd stitch_ai_yard_pathfinding_system && npm run dev",
+    "dev:map": "cd port_zoning_map && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}

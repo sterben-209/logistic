@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nexus Terminal - Inventory</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for data tables */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(19, 27, 46, 0.5); /* surface-container-low */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(66, 71, 84, 0.5); /* outline-variant */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(140, 144, 159, 0.8); /* outline */
+        }
+    </style>
+<!-- Tailwind CSS with Custom Config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#ff5451",
+                        "secondary": "#4edea3",
+                        "surface-container-low": "#131b2e",
+                        "surface-container-lowest": "#060e20",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-fixed": "#001a42",
+                        "surface-tint": "#adc6ff",
+                        "inverse-on-surface": "#283044",
+                        "secondary-fixed": "#6ffbbe",
+                        "on-surface-variant": "#c2c6d6",
+                        "inverse-primary": "#005ac2",
+                        "on-surface": "#dae2fd",
+                        "surface-container-highest": "#2d3449",
+                        "on-tertiary-fixed": "#410004",
+                        "primary": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-primary-fixed-variant": "#004395",
+                        "tertiary": "#ffb3ad",
+                        "surface-bright": "#31394d",
+                        "error-container": "#93000a",
+                        "on-primary": "#002e6a",
+                        "on-tertiary-fixed-variant": "#930013",
+                        "on-background": "#dae2fd",
+                        "outline": "#8c909f",
+                        "on-tertiary": "#68000a",
+                        "error": "#ffb4ab",
+                        "tertiary-fixed-dim": "#ffb3ad",
+                        "surface-container": "#171f33",
+                        "outline-variant": "#424754",
+                        "on-error": "#690005",
+                        "on-secondary": "#003824",
+                        "on-tertiary-container": "#5c0008",
+                        "on-secondary-fixed": "#002113",
+                        "primary-container": "#4d8eff",
+                        "on-secondary-fixed-variant": "#005236",
+                        "surface-dim": "#0b1326",
+                        "on-secondary-container": "#00311f",
+                        "on-primary-container": "#00285d",
+                        "inverse-surface": "#dae2fd",
+                        "tertiary-fixed": "#ffdad7",
+                        "background": "#0b1326",
+                        "surface-container-high": "#222a3d",
+                        "surface": "#0b1326",
+                        "secondary-container": "#00a572",
+                        "primary-fixed-dim": "#adc6ff",
+                        "surface-variant": "#2d3449",
+                        "secondary-fixed-dim": "#4edea3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "panel-gap": "12px",
+                        "margin-desktop": "24px",
+                        "margin-mobile": "16px",
+                        "base": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "title-md": ["Inter", "sans-serif"],
+                        "label-sm": ["JetBrains Mono", "monospace"],
+                        "display-lg": ["Inter", "sans-serif"],
+                        "telemetry-num": ["JetBrains Mono", "monospace"],
+                        "body-md": ["Inter", "sans-serif"],
+                        "headline-lg": ["Inter", "sans-serif"],
+                        "headline-lg-mobile": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "telemetry-num": ["14px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 right-0 w-[calc(100%-16rem)] h-16 bg-surface-container/80 dark:bg-surface-container/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-md shadow-black/20 flex justify-between items-center px-margin-desktop z-40">
+<!-- Search Bar (on_left) -->
+<div class="flex items-center w-96 relative group">
+<span class="material-symbols-outlined absolute left-3 text-outline-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-dim border border-outline-variant/30 rounded-lg py-2 pl-10 pr-4 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-[0_0_0_rgba(77,142,255,0)] focus:shadow-[0_0_15px_rgba(77,142,255,0.15)] transition-all placeholder:text-outline-variant/70" placeholder="Search Terminal Database..." type="text"/>
+</div>
+<!-- Trailing Actions & Profile -->
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 text-primary dark:text-primary-fixed-dim">
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 hover:opacity-100 active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 hover:opacity-100 active:scale-95">
+<span class="material-symbols-outlined">wifi_tethering</span>
+</button>
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 hover:opacity-100 active:scale-95">
+<span class="material-symbols-outlined">terminal</span>
+</button>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<div class="flex items-center gap-3 cursor-pointer group">
+<div class="text-right hidden lg:block">
+<div class="font-title-md text-[14px] leading-tight font-semibold text-on-surface group-hover:text-primary transition-colors">Administrator</div>
+<div class="font-label-sm text-label-sm text-outline">Lvl 4 Access</div>
+</div>
+<img alt="Administrator profile" class="w-10 h-10 rounded-lg object-cover border border-outline-variant/30 group-hover:border-primary/50 transition-colors" data-alt="A futuristic, high-contrast headshot of a logistics administrator in a dark tech environment, lit by subtle blue and green neon lights, conveying authority and precision." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcI2dwjQhBhLivanrBCcR50coWxq7pTL8Mcmh7OFOSSRiJroVosxveaJzi8WG0P5y6sWQPXDtUQHaJijSbXvbdDyi8uJLW_aOsr01a9hm0dTr6Ky0hFQd4aw6dqkbvUgJ2UoLIg6bHB9bUpHG396X6_wRfHzwmEzLnCnYxp8iFPlBXUQJSiGGnUma7EkfDRkYE1D19OjZjdPYR8YTQET7RXufbmn3iE4ba8d-mnV1ryesq8X1lECTsyhO9ZVah6VT5wddmH7lhEI4"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low border-r border-outline-variant/30 shadow-sm flex flex-col py-6 z-50">
+    <div class="px-6 mb-8 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+            <span class="material-symbols-outlined text-primary">anchor</span>
+        </div>
+        <div>
+            <h1 class="text-lg font-bold text-primary leading-tight">Nexus Terminal</h1>
+            <p class="text-xs text-on-surface-variant">Command Center</p>
+        </div>
+    </div>
+    
+    <nav class="flex-1 px-2 space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_operations_command/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">monitoring</span>
+            <span class="text-sm font-medium">Operations</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-2 border-primary rounded-l-lg transition-colors group" href="../nexus_terminal_inventory_1/code.html">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">inventory_2</span>
+            <span class="text-sm font-semibold">Inventory</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_analytics/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">analytics</span>
+            <span class="text-sm font-medium">Analytics</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_logistics/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">local_shipping</span>
+            <span class="text-sm font-medium">Logistics Fleet</span>
+        </a>
+    </nav>
+
+    <div class="px-2 mt-auto space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg" href="#">
+            <span class="material-symbols-outlined">help</span>
+            <span class="text-sm font-medium">Support</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-error hover:bg-error/10 transition-colors rounded-lg" href="../nexus_terminal_admin_login/code.html">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-sm font-medium">Sign Out</span>
+        </a>
+    </div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 pt-16 p-margin-desktop min-h-screen">
+<!-- Page Header -->
+<div class="mb-8 flex justify-between items-end">
+<div>
+<h2 class="font-display-lg text-display-lg text-inverse-surface mb-2">Inventory Management</h2>
+<p class="font-body-md text-body-md text-outline">Real-time telemetry and container logistics oversight.</p>
+</div>
+<button class="bg-primary-container text-on-primary-container px-6 py-2.5 rounded-lg font-title-md text-[14px] font-semibold flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors shadow-[0_4px_20px_rgba(77,142,255,0.15)]">
+<span class="material-symbols-outlined text-[18px]">add_box</span>
+                Register Inbound
+            </button>
+</div>
+<!-- Quick Summary Dashboard (Bento Grid) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-panel-gap mb-8">
+<!-- Card 1: Total Containers -->
+<div class="bg-surface border border-outline-variant/20 rounded-xl p-6 relative overflow-hidden group hover:border-primary/50 transition-colors">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-primary/10 transition-colors"></div>
+<div class="flex justify-between items-start mb-4 relative z-10">
+<h3 class="font-title-md text-[16px] text-on-surface-variant font-medium">Total Containers</h3>
+<span class="material-symbols-outlined text-outline-variant">deployed_code</span>
+</div>
+<div class="flex items-baseline gap-3 relative z-10">
+<span class="font-telemetry-num text-[40px] leading-none font-bold text-inverse-surface">14,285</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center">
+<span class="material-symbols-outlined text-[14px]">arrow_upward</span> 2.4%
+                    </span>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[75%] rounded-full shadow-[0_0_10px_rgba(173,198,255,0.8)]"></div>
+</div>
+</div>
+<!-- Card 2: Reefer Units -->
+<div class="bg-surface border border-outline-variant/20 rounded-xl p-6 relative overflow-hidden group hover:border-secondary/50 transition-colors">
+<div class="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-secondary/10 transition-colors"></div>
+<div class="flex justify-between items-start mb-4 relative z-10">
+<h3 class="font-title-md text-[16px] text-on-surface-variant font-medium">Active Reefer Units</h3>
+<span class="material-symbols-outlined text-secondary">ac_unit</span>
+</div>
+<div class="flex items-baseline gap-3 relative z-10">
+<span class="font-telemetry-num text-[40px] leading-none font-bold text-secondary">3,192</span>
+<span class="font-label-sm text-label-sm bg-secondary/10 text-secondary px-2 py-0.5 rounded border border-secondary/20">Optimal</span>
+</div>
+<!-- Sparkline mock -->
+<div class="mt-4 flex items-end h-8 gap-1 opacity-70">
+<div class="w-1/6 bg-secondary/40 h-[40%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary/60 h-[60%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary/50 h-[50%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary/80 h-[80%] rounded-t-sm"></div>
+<div class="w-1/6 bg-secondary h-[100%] rounded-t-sm shadow-[0_0_8px_rgba(78,222,163,0.6)]"></div>
+<div class="w-1/6 bg-secondary/90 h-[90%] rounded-t-sm"></div>
+</div>
+</div>
+<!-- Card 3: Occupancy -->
+<div class="bg-surface border border-outline-variant/20 rounded-xl p-6 relative overflow-hidden group hover:border-tertiary-container/50 transition-colors">
+<div class="absolute top-0 right-0 w-32 h-32 bg-tertiary-container/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-tertiary-container/10 transition-colors"></div>
+<div class="flex justify-between items-start mb-2 relative z-10">
+<h3 class="font-title-md text-[16px] text-on-surface-variant font-medium">Terminal Occupancy</h3>
+<span class="material-symbols-outlined text-outline-variant">warehouse</span>
+</div>
+<div class="flex items-center gap-6 relative z-10 mt-2">
+<!-- Circular Gauge Mock -->
+<div class="relative w-16 h-16 flex-shrink-0">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<!-- Background Circle -->
+<path class="text-surface-container-highest" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<!-- Progress Circle (88%) -->
+<path class="text-tertiary-container shadow-[0_0_10px_rgba(255,84,81,0.5)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="88, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="font-telemetry-num text-[12px] font-bold text-inverse-surface">88%</span>
+</div>
+</div>
+<div>
+<p class="font-body-md text-[14px] text-outline mb-1">Zone C nearing capacity.</p>
+<span class="font-label-sm text-label-sm bg-tertiary-container/10 text-tertiary-container px-2 py-0.5 rounded border border-tertiary-container/20">Action Required</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Data Table Section -->
+<div class="bg-surface border border-outline-variant/20 rounded-xl overflow-hidden shadow-lg shadow-black/40 flex flex-col">
+<!-- Table Toolbar / Filters -->
+<div class="p-4 border-b border-outline-variant/20 bg-surface-container-low/50 flex flex-wrap gap-4 items-center justify-between">
+<div class="flex gap-3">
+<div class="relative">
+<select class="appearance-none bg-surface-dim border border-outline-variant/30 text-on-surface font-title-md text-[14px] rounded-lg pl-4 pr-10 py-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer">
+<option value="">All Types</option>
+<option value="dry">Dry</option>
+<option value="reefer">Reefer</option>
+<option value="open">Open Top</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-outline-variant">expand_more</span>
+</div>
+<div class="relative">
+<select class="appearance-none bg-surface-dim border border-outline-variant/30 text-on-surface font-title-md text-[14px] rounded-lg pl-4 pr-10 py-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary cursor-pointer">
+<option value="">All Sizes</option>
+<option value="20">20ft</option>
+<option value="40">40ft</option>
+<option value="45">45ft HQ</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-outline-variant">expand_more</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 rounded-lg border border-outline-variant/30 text-outline hover:text-primary hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+</button>
+<button class="p-2 rounded-lg border border-outline-variant/30 text-outline hover:text-primary hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">download</span>
+</button>
+</div>
+</div>
+<!-- The Data Table -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-high border-b border-outline-variant/20">
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider">Container ID</th>
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider">Type</th>
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider">Size</th>
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider">Cargo Type</th>
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider text-right">Days in Terminal</th>
+<th class="py-3 px-6 font-label-sm text-label-sm text-outline-variant uppercase tracking-wider text-center">Actions</th>
+</tr>
+</thead>
+<tbody class="font-body-md text-[14px] text-on-surface-variant divide-y divide-outline-variant/10">
+<!-- Row 1 (Dry) -->
+<tr class="hover:bg-primary/5 transition-colors group cursor-pointer">
+<td class="py-4 px-6 font-telemetry-num font-medium text-inverse-surface group-hover:text-primary transition-colors">NEXU-883920-1</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-bright border border-outline-variant/20 text-on-surface">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> Dry
+                                </span>
+</td>
+<td class="py-4 px-6 font-telemetry-num text-outline">40ft</td>
+<td class="py-4 px-6">Electronics</td>
+<td class="py-4 px-6 text-right font-telemetry-num text-on-surface">04</td>
+<td class="py-4 px-6 text-center">
+<button class="text-outline-variant hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 (Reefer - Active) -->
+<tr class="hover:bg-primary/5 transition-colors group cursor-pointer bg-secondary/5">
+<td class="py-4 px-6 font-telemetry-num font-medium text-inverse-surface group-hover:text-primary transition-colors">COLD-441029-4</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/10 border border-secondary/30 text-secondary">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse shadow-[0_0_5px_rgba(78,222,163,0.8)]"></span> Reefer
+                                </span>
+</td>
+<td class="py-4 px-6 font-telemetry-num text-outline">40ft</td>
+<td class="py-4 px-6">Pharmaceuticals</td>
+<td class="py-4 px-6 text-right font-telemetry-num text-on-surface">02</td>
+<td class="py-4 px-6 text-center">
+<button class="text-outline-variant hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 (Dry - Warning) -->
+<tr class="hover:bg-primary/5 transition-colors group cursor-pointer">
+<td class="py-4 px-6 font-telemetry-num font-medium text-inverse-surface group-hover:text-primary transition-colors">MAER-119283-7</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-bright border border-outline-variant/20 text-on-surface">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> Dry
+                                </span>
+</td>
+<td class="py-4 px-6 font-telemetry-num text-outline">20ft</td>
+<td class="py-4 px-6">Textiles</td>
+<td class="py-4 px-6 text-right font-telemetry-num text-tertiary-container font-bold">18</td>
+<td class="py-4 px-6 text-center">
+<button class="text-outline-variant hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 (Open Top) -->
+<tr class="hover:bg-primary/5 transition-colors group cursor-pointer">
+<td class="py-4 px-6 font-telemetry-num font-medium text-inverse-surface group-hover:text-primary transition-colors">HLCU-992314-2</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 border border-primary/30 text-primary">
+<span class="material-symbols-outlined text-[12px]">view_in_ar</span> Open Top
+                                </span>
+</td>
+<td class="py-4 px-6 font-telemetry-num text-outline">40ft</td>
+<td class="py-4 px-6">Industrial Machinery</td>
+<td class="py-4 px-6 text-right font-telemetry-num text-on-surface">07</td>
+<td class="py-4 px-6 text-center">
+<button class="text-outline-variant hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 5 (Reefer - Critical) -->
+<tr class="hover:bg-primary/5 transition-colors group cursor-pointer bg-error/5">
+<td class="py-4 px-6 font-telemetry-num font-medium text-inverse-surface group-hover:text-primary transition-colors">COLD-882103-9</td>
+<td class="py-4 px-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-error/10 border border-error/30 text-error">
+<span class="material-symbols-outlined text-[12px] animate-ping">warning</span> Reefer
+                                </span>
+</td>
+<td class="py-4 px-6 font-telemetry-num text-outline">20ft</td>
+<td class="py-4 px-6">Perishables (Meat)</td>
+<td class="py-4 px-6 text-right font-telemetry-num text-on-surface">01</td>
+<td class="py-4 px-6 text-center">
+<button class="text-outline-variant hover:text-primary transition-colors p-1">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer / Pagination -->
+<div class="p-4 border-t border-outline-variant/20 bg-surface-container-low/30 flex justify-between items-center">
+<span class="font-label-sm text-label-sm text-outline-variant">Showing 1-5 of 14,285</span>
+<div class="flex gap-1">
+<button class="p-1 rounded bg-surface border border-outline-variant/30 text-outline-variant hover:text-primary hover:border-primary/50 disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<button class="w-8 h-8 rounded bg-primary/20 border border-primary/50 text-primary font-telemetry-num text-[12px] flex items-center justify-center">1</button>
+<button class="w-8 h-8 rounded bg-surface border border-outline-variant/30 text-outline-variant hover:text-primary hover:border-primary/50 font-telemetry-num text-[12px] flex items-center justify-center transition-colors">2</button>
+<button class="w-8 h-8 rounded bg-surface border border-outline-variant/30 text-outline-variant hover:text-primary hover:border-primary/50 font-telemetry-num text-[12px] flex items-center justify-center transition-colors">3</button>
+<span class="w-8 h-8 flex items-center justify-center text-outline-variant">...</span>
+<button class="p-1 rounded bg-surface border border-outline-variant/30 text-outline-variant hover:text-primary hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

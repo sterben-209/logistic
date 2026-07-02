@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nexus Terminal - Analytics Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary-container": "#ff5451",
+                      "secondary": "#4edea3",
+                      "surface-container-low": "#131b2e",
+                      "surface-container-lowest": "#060e20",
+                      "primary-fixed": "#d8e2ff",
+                      "on-primary-fixed": "#001a42",
+                      "surface-tint": "#adc6ff",
+                      "inverse-on-surface": "#283044",
+                      "secondary-fixed": "#6ffbbe",
+                      "on-surface-variant": "#c2c6d6",
+                      "inverse-primary": "#005ac2",
+                      "on-surface": "#dae2fd",
+                      "surface-container-highest": "#2d3449",
+                      "on-tertiary-fixed": "#410004",
+                      "primary": "#adc6ff",
+                      "on-error-container": "#ffdad6",
+                      "on-primary-fixed-variant": "#004395",
+                      "tertiary": "#ffb3ad",
+                      "surface-bright": "#31394d",
+                      "error-container": "#93000a",
+                      "on-primary": "#002e6a",
+                      "on-tertiary-fixed-variant": "#930013",
+                      "on-background": "#dae2fd",
+                      "outline": "#8c909f",
+                      "on-tertiary": "#68000a",
+                      "error": "#ffb4ab",
+                      "tertiary-fixed-dim": "#ffb3ad",
+                      "surface-container": "#171f33",
+                      "outline-variant": "#424754",
+                      "on-error": "#690005",
+                      "on-secondary": "#003824",
+                      "on-tertiary-container": "#5c0008",
+                      "on-secondary-fixed": "#002113",
+                      "primary-container": "#4d8eff",
+                      "on-secondary-fixed-variant": "#005236",
+                      "surface-dim": "#0b1326",
+                      "on-secondary-container": "#00311f",
+                      "on-primary-container": "#00285d",
+                      "inverse-surface": "#dae2fd",
+                      "tertiary-fixed": "#ffdad7",
+                      "background": "#0b1326",
+                      "surface-container-high": "#222a3d",
+                      "surface": "#0b1326",
+                      "secondary-container": "#00a572",
+                      "primary-fixed-dim": "#adc6ff",
+                      "surface-variant": "#2d3449",
+                      "secondary-fixed-dim": "#4edea3"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "panel-gap": "12px",
+                      "margin-desktop": "24px",
+                      "margin-mobile": "16px",
+                      "base": "4px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "title-md": [
+                              "Inter"
+                      ],
+                      "label-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "telemetry-num": [
+                              "JetBrains Mono"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "title-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "telemetry-num": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .data-table-row {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .data-table-row:hover {
+            background: rgba(173, 198, 255, 0.1);
+        }
+        .glow-active {
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+        }
+        
+        /* Grid Lines for Charts */
+        .chart-grid {
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* Pulse animation for high priority */
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .slot-occupied-critical {
+            background-color: rgba(239, 68, 68, 0.4);
+            animation: pulse-red 2s infinite;
+        }
+      </style>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-hidden font-body-md">
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 w-[calc(100%-16rem)] h-16 bg-surface-container/80 dark:bg-surface-container/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-md shadow-black/20 flex justify-between items-center px-margin-desktop z-40 hidden md:flex">
+<div class="flex items-center gap-4">
+<span class="font-title-md text-title-md font-black tracking-tight text-primary dark:text-primary-fixed">Nexus Terminal</span>
+</div>
+<div class="flex items-center gap-6">
+<!-- Search placeholder -->
+<div class="relative w-64">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-[#0f172a] border border-outline-variant/30 rounded-DEFAULT py-1.5 pl-9 pr-3 font-label-sm text-label-sm text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-colors" placeholder="Search telemetry..." type="text"/>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">wifi_tethering</span>
+</button>
+<button class="hover:text-primary dark:hover:text-primary-fixed transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">terminal</span>
+</button>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30">
+<img alt="Administrator profile" class="w-full h-full object-cover" data-alt="Close up portrait of a logistics administrator in a high-tech control room, dramatic dark lighting with neon blue accents, sharp focus, corporate modern style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_FcpWwVHoEKYbbPlleo23dlpbwqD7o0TEoVxq61zR9q-VZLhjlZ95aA0FaoGJQfj8zpiIKsDPmjySqJE-s6gmyPZv9Co99s5x4mzp3gzu1vAiYJgWPrkT_lUGHsIsUol9O1u4a3-GzEe1w8LGVozfNRU_CB3MX9oW1gHUJblWjnbNiKvKAu_YJRKCtEvZ5SVqJHINuLmu0SzN-DNCMC0GcYz7WUT4AMwaKVjtj3kvfqNqgSXKcsVn72rCVynZO8qY_YId-Q82HsA"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low border-r border-outline-variant/30 shadow-sm flex flex-col py-6 z-50">
+    <div class="px-6 mb-8 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+            <span class="material-symbols-outlined text-primary">anchor</span>
+        </div>
+        <div>
+            <h1 class="text-lg font-bold text-primary leading-tight">Nexus Terminal</h1>
+            <p class="text-xs text-on-surface-variant">Command Center</p>
+        </div>
+    </div>
+    
+    <nav class="flex-1 px-2 space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_operations_command/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">monitoring</span>
+            <span class="text-sm font-medium">Operations</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_inventory_1/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">inventory_2</span>
+            <span class="text-sm font-medium">Inventory</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-2 border-primary rounded-l-lg transition-colors group" href="../nexus_terminal_analytics/code.html">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">analytics</span>
+            <span class="text-sm font-semibold">Analytics</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_logistics/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">local_shipping</span>
+            <span class="text-sm font-medium">Logistics Fleet</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_map_digitizer/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">map</span>
+            <span class="text-sm font-medium">Map Digitizer</span>
+        </a>
+    </nav>
+
+    <div class="px-2 mt-auto space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg" href="#">
+            <span class="material-symbols-outlined">help</span>
+            <span class="text-sm font-medium">Support</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-error hover:bg-error/10 transition-colors rounded-lg" href="../nexus_terminal_admin_login/code.html">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-sm font-medium">Sign Out</span>
+        </a>
+    </div>
+</aside>
+<!-- Main Content Area -->
+<main class="md:ml-64 pt-16 h-screen flex flex-col bg-surface-lowest">
+<div class="flex-1 overflow-auto p-margin-desktop">
+<header class="mb-6 flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-1">Terminal Analytics</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Real-time performance metrics and historical trends</p>
+</div>
+<div class="flex gap-2">
+<button class="bg-[#1e293b] border border-outline-variant/30 text-on-surface px-4 py-2 rounded-DEFAULT font-label-sm text-label-sm flex items-center gap-2 hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                        Last 24 Hours
+                    </button>
+<button class="bg-inverse-primary text-on-primary px-4 py-2 rounded-DEFAULT font-label-sm text-label-sm font-semibold flex items-center gap-2 hover:bg-primary transition-colors glow-active">
+<span class="material-symbols-outlined text-[16px]">download</span>
+                        Export Data
+                    </button>
+</div>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-panel-gap">
+<!-- KPI 1: Throughput -->
+<div class="glass-panel rounded-lg p-5 col-span-1 md:col-span-4 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-primary/10"></div>
+<div class="flex justify-between items-start mb-4">
+<div class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Throughput (TEUs)</div>
+<span class="material-symbols-outlined text-primary text-[20px]">view_in_ar</span>
+</div>
+<div class="font-display-lg text-display-lg text-on-surface mb-2">12,450</div>
+<div class="flex items-center gap-2">
+<span class="font-telemetry-num text-telemetry-num text-secondary bg-secondary/10 px-2 py-0.5 rounded-DEFAULT flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">trending_up</span> +8.4%
+                        </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">vs previous 24h</span>
+</div>
+</div>
+<!-- KPI 2: Turnaround Time -->
+<div class="glass-panel rounded-lg p-5 col-span-1 md:col-span-4 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-secondary/10"></div>
+<div class="flex justify-between items-start mb-4">
+<div class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Avg Turnaround Time</div>
+<span class="material-symbols-outlined text-secondary text-[20px]">timer</span>
+</div>
+<div class="font-display-lg text-display-lg text-on-surface mb-2">42<span class="text-title-md text-on-surface-variant ml-1">min</span></div>
+<div class="flex items-center gap-2">
+<span class="font-telemetry-num text-telemetry-num text-secondary bg-secondary/10 px-2 py-0.5 rounded-DEFAULT flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">trending_down</span> -2.1%
+                        </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">vs target (45m)</span>
+</div>
+</div>
+<!-- KPI 3: Yard Utilization -->
+<div class="glass-panel rounded-lg p-5 col-span-1 md:col-span-4 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-tertiary-container/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-tertiary-container/10"></div>
+<div class="flex justify-between items-start mb-4">
+<div class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Yard Utilization</div>
+<span class="material-symbols-outlined text-tertiary-container text-[20px]">layers</span>
+</div>
+<div class="font-display-lg text-display-lg text-on-surface mb-2">87<span class="text-title-md text-on-surface-variant ml-1">%</span></div>
+<!-- Progress Bar -->
+<div class="w-full h-2 bg-surface-container-highest rounded-full mt-3 overflow-hidden">
+<div class="h-full bg-tertiary-container rounded-full w-[87%] relative">
+<div class="absolute inset-0 bg-white/20 w-full h-full animate-pulse"></div>
+</div>
+</div>
+<div class="flex justify-between mt-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Zone Alpha: 92%</span>
+<span class="font-label-sm text-label-sm text-tertiary-container">Warning</span>
+</div>
+</div>
+<!-- Main Chart: 24h Volume Trends -->
+<div class="glass-panel rounded-lg p-5 col-span-1 md:col-span-8 flex flex-col min-h-[360px]">
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-title-md text-title-md text-on-surface">Volume Trends (24h)</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-sm bg-primary"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Inbound</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-sm bg-secondary"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Outbound</span>
+</div>
+</div>
+</div>
+<!-- Simulated Chart Area -->
+<div class="flex-1 relative chart-grid mt-2 rounded-DEFAULT overflow-hidden border border-outline-variant/10">
+<!-- Y-Axis Labels (Simulated) -->
+<div class="absolute left-2 top-0 bottom-0 flex flex-col justify-between py-2 text-on-surface-variant font-telemetry-num text-[10px] z-10">
+<span>1000</span>
+<span>750</span>
+<span>500</span>
+<span>250</span>
+<span>0</span>
+</div>
+<!-- X-Axis Labels (Simulated) -->
+<div class="absolute left-10 right-0 bottom-1 flex justify-between px-4 text-on-surface-variant font-telemetry-num text-[10px] z-10">
+<span>00:00</span>
+<span>06:00</span>
+<span>12:00</span>
+<span>18:00</span>
+<span>24:00</span>
+</div>
+<!-- Simulated Line Graphs using SVG -->
+<svg class="absolute inset-0 w-full h-full pl-10 pb-6 pt-4 pr-4" preserveaspectratio="none" viewbox="0 0 1000 300">
+<!-- Inbound Line (Primary Blue) -->
+<path d="M0,250 C100,220 200,280 300,150 C400,50 500,100 600,180 C700,250 800,120 900,80 L1000,100" fill="none" stroke="#adc6ff" stroke-width="3" style="filter: drop-shadow(0 4px 6px rgba(173, 198, 255, 0.3));"></path>
+<!-- Inbound Area Fill -->
+<path d="M0,250 C100,220 200,280 300,150 C400,50 500,100 600,180 C700,250 800,120 900,80 L1000,100 L1000,300 L0,300 Z" fill="url(#grad-inbound)" opacity="0.2"></path>
+<!-- Outbound Line (Secondary Green) -->
+<path d="M0,280 C150,260 250,180 350,200 C450,220 550,150 650,90 C750,40 850,160 1000,140" fill="none" stroke="#4edea3" stroke-dasharray="6,4" stroke-width="2" style="filter: drop-shadow(0 2px 4px rgba(78, 222, 163, 0.2));"></path>
+<defs>
+<lineargradient id="grad-inbound" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#adc6ff" stop-opacity="1"></stop>
+<stop offset="100%" stop-color="#adc6ff" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+</svg>
+<!-- Hover Tooltip Indicator (Simulated) -->
+<div class="absolute left-[60%] top-0 bottom-6 w-px bg-white/30 border-r border-dashed border-white/20"></div>
+<div class="absolute left-[60%] top-[40%] -translate-x-1/2 -translate-y-1/2 bg-surface-container-highest border border-outline-variant/50 rounded-DEFAULT p-2 shadow-lg z-20 pointer-events-none">
+<div class="font-label-sm text-label-sm text-on-surface mb-1">14:30 HRS</div>
+<div class="flex items-center justify-between gap-4 font-telemetry-num text-[12px]">
+<span class="text-primary">IN: 842</span>
+<span class="text-secondary">OUT: 615</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Heat Map: High Traffic Zones -->
+<div class="glass-panel rounded-lg p-5 col-span-1 md:col-span-4 flex flex-col min-h-[360px]">
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-title-md text-title-md text-on-surface">Traffic Density</h3>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">map</span>
+</div>
+<div class="flex-1 relative rounded-DEFAULT border border-outline-variant/30 overflow-hidden bg-surface-container-lowest">
+<!-- Simulated Terminal Map Image overlay -->
+<div class="absolute inset-0 opacity-30" data-alt="Schematic blueprint map of a modern shipping terminal port, top-down view, dark theme with faint grid lines, industrial technical aesthetic, high-contrast structural outlines." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCEHoAC_LbKjul-1lHLRVpKOR8Fb6K_jJLmqzmEB5D3hC-DqdzPP4OsTnD-FegQ0tSHcDbMYBpJGHFiUymg15vnZvq9x6UFfdf2wcAacOSUmFHpIqhwrg2UaBrMOu3Be8c41nweFvaf8sycY9jnUwyRrTeZGpuancoOF3GOzbD_jo7UTLNlDOQHFyBYyVf9-NU-vWRYnBXYqqld7DCI1d4ZjclebtMduJFECoIpQsO5X6deVe19grfbuMTHApcPGwrl4Llws8ri9Ls'); background-size: cover; background-position: center;"></div>
+<!-- Heat map grid overlay -->
+<div class="absolute inset-0 grid grid-cols-4 grid-rows-4 gap-1 p-2">
+<!-- High density zones -->
+<div class="rounded-sm bg-tertiary-container/60 blur-[4px] slot-occupied-critical col-start-2 row-start-2"></div>
+<div class="rounded-sm bg-tertiary-container/40 blur-[4px] col-start-3 row-start-2"></div>
+<div class="rounded-sm bg-primary/40 blur-[4px] col-start-2 row-start-3"></div>
+<!-- Medium density -->
+<div class="rounded-sm bg-secondary/30 blur-[4px] col-start-4 row-start-1"></div>
+<div class="rounded-sm bg-secondary/20 blur-[4px] col-start-3 row-start-4"></div>
+<!-- Low density (empty dashed slots) -->
+<div class="rounded-sm border border-dashed border-outline-variant/30 col-start-1 row-start-1"></div>
+<div class="rounded-sm border border-dashed border-outline-variant/30 col-start-1 row-start-4"></div>
+</div>
+<!-- Legend -->
+<div class="absolute bottom-2 right-2 bg-surface-container-highest/90 backdrop-blur-sm border border-outline-variant/30 rounded-DEFAULT p-1.5 flex flex-col gap-1 z-10">
+<div class="flex items-center gap-1.5">
+<div class="w-2 h-2 rounded-full bg-tertiary-container"></div>
+<span class="font-label-sm text-[9px] text-on-surface-variant">Congested</span>
+</div>
+<div class="flex items-center gap-1.5">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="font-label-sm text-[9px] text-on-surface-variant">Active</span>
+</div>
+<div class="flex items-center gap-1.5">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="font-label-sm text-[9px] text-on-surface-variant">Optimal</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Recent Alerts Table -->
+<div class="glass-panel rounded-lg p-0 col-span-1 md:col-span-12 overflow-hidden mt-2">
+<div class="p-5 border-b border-outline-variant/20 flex justify-between items-center">
+<h3 class="font-title-md text-title-md text-on-surface">Live Telemetry Alerts</h3>
+<a class="font-label-sm text-label-sm text-primary hover:underline" href="#">View All Logs</a>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container/50 border-b border-outline-variant/30">
+<th class="py-3 px-5 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-medium">Timestamp</th>
+<th class="py-3 px-5 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-medium">Zone</th>
+<th class="py-3 px-5 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-medium">Event Code</th>
+<th class="py-3 px-5 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider font-medium">Status</th>
+</tr>
+</thead>
+<tbody class="font-telemetry-num text-telemetry-num text-on-surface">
+<tr class="data-table-row transition-colors cursor-default">
+<td class="py-3 px-5 text-on-surface-variant">14:42:05 Z</td>
+<td class="py-3 px-5">Yard Alpha-04</td>
+<td class="py-3 px-5">Capacity Warning (92%)</td>
+<td class="py-3 px-5">
+<span class="inline-flex items-center px-2 py-0.5 rounded-DEFAULT text-[11px] font-label-sm text-tertiary-container bg-tertiary-container/10 border border-tertiary-container/30">
+                                            CRITICAL
+                                        </span>
+</td>
+</tr>
+<tr class="data-table-row transition-colors cursor-default">
+<td class="py-3 px-5 text-on-surface-variant">14:38:12 Z</td>
+<td class="py-3 px-5">Gate 3 (Inbound)</td>
+<td class="py-3 px-5">Throughput Spike Detected</td>
+<td class="py-3 px-5">
+<span class="inline-flex items-center px-2 py-0.5 rounded-DEFAULT text-[11px] font-label-sm text-primary bg-primary/10 border border-primary/30">
+                                            NOTICE
+                                        </span>
+</td>
+</tr>
+<tr class="data-table-row transition-colors cursor-default">
+<td class="py-3 px-5 text-on-surface-variant">14:15:00 Z</td>
+<td class="py-3 px-5">Crane System B</td>
+<td class="py-3 px-5">Maintenance Cycle Complete</td>
+<td class="py-3 px-5">
+<span class="inline-flex items-center px-2 py-0.5 rounded-DEFAULT text-[11px] font-label-sm text-secondary bg-secondary/10 border border-secondary/30">
+                                            RESOLVED
+                                        </span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

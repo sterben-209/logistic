@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nexus Terminal - Operations Hub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#0b1326",
+                        "inverse-surface": "#dae2fd",
+                        "outline": "#8c909f",
+                        "tertiary": "#ffb3ad",
+                        "on-tertiary": "#68000a",
+                        "tertiary-fixed": "#ffdad7",
+                        "inverse-on-surface": "#283044",
+                        "on-secondary-container": "#00311f",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#5c0008",
+                        "secondary-container": "#00a572",
+                        "on-surface-variant": "#c2c6d6",
+                        "surface-tint": "#adc6ff",
+                        "on-primary-fixed": "#001a42",
+                        "tertiary-container": "#ff5451",
+                        "on-secondary": "#003824",
+                        "on-surface": "#dae2fd",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-error-container": "#ffdad6",
+                        "error": "#ffb4ab",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-variant": "#2d3449",
+                        "surface-container-lowest": "#060e20",
+                        "on-background": "#dae2fd",
+                        "tertiary-fixed-dim": "#ffb3ad",
+                        "secondary": "#4edea3",
+                        "on-primary-container": "#00285d",
+                        "secondary-fixed": "#6ffbbe",
+                        "primary": "#adc6ff",
+                        "primary-fixed-dim": "#adc6ff",
+                        "primary-container": "#4d8eff",
+                        "on-tertiary-fixed": "#410004",
+                        "on-error": "#690005",
+                        "on-primary": "#002e6a",
+                        "surface-container-low": "#131b2e",
+                        "background": "#0b1326",
+                        "on-secondary-fixed": "#002113",
+                        "surface-container-high": "#222a3d",
+                        "primary-fixed": "#d8e2ff",
+                        "on-primary-fixed-variant": "#004395",
+                        "outline-variant": "#424754",
+                        "surface-container-highest": "#2d3449",
+                        "surface-container": "#171f33",
+                        "inverse-primary": "#005ac2",
+                        "surface-dim": "#0b1326",
+                        "on-tertiary-fixed-variant": "#930013",
+                        "surface-bright": "#31394d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-desktop": "24px",
+                        "gutter": "16px",
+                        "base": "4px",
+                        "margin-mobile": "16px",
+                        "panel-gap": "12px"
+                    },
+                    "fontFamily": {
+                        "title-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "telemetry-num": ["JetBrains Mono"],
+                        "headline-lg-mobile": ["Inter"]
+                    },
+                    "fontSize": {
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "telemetry-num": ["14px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+        .data-grid-row {
+            border-bottom: 1px solid theme('colors.outline-variant/30');
+            transition: background-color 0.15s ease;
+        }
+        .data-grid-row:hover {
+            background-color: theme('colors.primary/5');
+        }
+        .data-grid-cell {
+            padding: 10px 16px;
+            font-family: theme('fontFamily.telemetry-num');
+            font-size: 13px;
+            color: theme('colors.on-surface');
+            white-space: nowrap;
+        }
+        .data-grid-header {
+            padding: 12px 16px;
+            font-family: theme('fontFamily.label-sm');
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: theme('colors.outline');
+            background-color: theme('colors.surface-container-high');
+            border-bottom: 1px solid theme('colors.outline-variant/50');
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .terminal-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .terminal-log-entry {
+            border-left: 2px solid transparent;
+            padding-left: 8px;
+            margin-bottom: 4px;
+        }
+        .terminal-log-entry.info { border-left-color: theme('colors.primary/50'); color: theme('colors.on-surface-variant'); }
+        .terminal-log-entry.success { border-left-color: theme('colors.secondary/50'); color: theme('colors.secondary'); }
+        .terminal-log-entry.warning { border-left-color: theme('colors.tertiary/50'); color: theme('colors.tertiary'); }
+        .terminal-log-entry.error { border-left-color: theme('colors.error/50'); color: theme('colors.error'); }
+        
+        .bg-grid-pattern {
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        
+        /* Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: theme('colors.primary');
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: theme('colors.primary-container');
+        }
+        .toggle-checkbox:checked + .toggle-label:after {
+            transform: translateX(100%);
+            border-color: white;
+        }
+        .toggle-label {
+            width: 36px;
+            height: 20px;
+            background-color: theme('colors.surface-variant');
+            border-radius: 9999px;
+            position: relative;
+            cursor: pointer;
+            transition: background-color .2s;
+        }
+        .toggle-label:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background-color: theme('colors.on-primary');
+            border-radius: 50%;
+            transition: transform .2s;
+        }
+    </style>
+</head>
+<body class="font-body-md antialiased overflow-hidden min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 right-0 w-[calc(100%-16rem)] h-16 bg-surface-container/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-md shadow-black/20 flex justify-between items-center px-margin-desktop z-40">
+<div class="flex items-center gap-4">
+<span class="font-title-md text-title-md font-black tracking-tight text-primary">Operations Hub</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative w-64 hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant/30 rounded py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 text-on-surface transition-all placeholder:text-outline-variant/70" placeholder="Search entity..." type="text"/>
+</div>
+<div class="flex items-center gap-3">
+<button class="text-on-surface-variant hover:text-primary transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">wifi_tethering</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors opacity-80 active:scale-95">
+<span class="material-symbols-outlined">terminal</span>
+</button>
+</div>
+<div class="h-8 w-px bg-outline-variant/30"></div>
+<img alt="Administrator profile" class="w-8 h-8 rounded-full border border-primary/30 object-cover" data-alt="A highly detailed, professional headshot of an industrial operations administrator, presented in a small circular avatar frame. The administrator wears a clean, dark blue tactical uniform with a subtle earpiece, illuminated by cool, high-tech blue light reflecting off a monitor. The background is a deeply shadowed command center, creating a strong dark-mode aesthetic that perfectly matches the deep space corporate high-tech logistics design system." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOIY9RslLm42u-UN8cMtKQTSe-LTZyqL4e8l9oltVTjvCzUM4fVhKcRDXjANWCTEqxfVu9R7l2ivVRyn1_aAuNICTFQyLCUyaJn-zPreQkQ9j-WbV8RWJbTVJzUhgIuONsmjoYsPFb3ySHhN0pZ5IOcwXXxjBBZVS7r3GA0IJaQLNziDgLXpFvaA3Wg2vsejDaK7LD_kjt3VVtYMAhU1YX3y7SNCec71q1OywZ4jjbtNYoyapl0o7fmPjdf2yyo2SN_12gM_m2UMM"/>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low border-r border-outline-variant/30 shadow-sm flex flex-col py-6 z-50">
+    <div class="px-6 mb-8 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20">
+            <span class="material-symbols-outlined text-primary">anchor</span>
+        </div>
+        <div>
+            <h1 class="text-lg font-bold text-primary leading-tight">Nexus Terminal</h1>
+            <p class="text-xs text-on-surface-variant">Command Center</p>
+        </div>
+    </div>
+    
+    <nav class="flex-1 px-2 space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary border-r-2 border-primary rounded-l-lg transition-colors group" href="../nexus_terminal_operations_command/code.html">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+            <span class="text-sm font-semibold">Operations</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_inventory_1/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">inventory_2</span>
+            <span class="text-sm font-medium">Inventory</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_analytics/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">analytics</span>
+            <span class="text-sm font-medium">Analytics</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group" href="../nexus_terminal_logistics/code.html">
+            <span class="material-symbols-outlined group-hover:text-primary transition-colors">local_shipping</span>
+            <span class="text-sm font-medium">Logistics Fleet</span>
+        </a>
+    </nav>
+
+    <div class="px-2 mt-auto space-y-2">
+        <a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg" href="#">
+            <span class="material-symbols-outlined">help</span>
+            <span class="text-sm font-medium">Support</span>
+        </a>
+        <a class="flex items-center gap-3 px-4 py-3 text-error hover:bg-error/10 transition-colors rounded-lg" href="../nexus_terminal_admin_login/code.html">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-sm font-medium">Sign Out</span>
+        </a>
+    </div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 pt-16 p-margin-desktop h-screen flex flex-col gap-panel-gap bg-grid-pattern relative">
+<div class="absolute inset-0 bg-gradient-to-b from-transparent to-background/50 pointer-events-none"></div>
+<div class="flex-1 flex gap-panel-gap min-h-0 relative z-10">
+<!-- Center Panel: Interactive Data Grid -->
+<section class="flex-[2] flex flex-col bg-surface-container/90 backdrop-blur-sm rounded-xl border border-outline-variant/30 shadow-lg overflow-hidden flex flex-col h-full">
+<!-- Data Grid Header Controls -->
+<div class="p-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-high/50">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-[24px]">dataset</span>
+<h2 class="font-title-md text-title-md text-primary">Container Matrix</h2>
+<span class="px-2 py-0.5 rounded text-[10px] font-label-sm bg-primary/10 text-primary border border-primary/20 ml-2">LIVE SYNC</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-[11px] text-outline">Manual Override</span>
+<div class="relative inline-block w-9 h-5 align-middle select-none">
+<input class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 top-0.5 left-0.5 opacity-0" id="manualOverride" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer" for="manualOverride"></label>
+</div>
+</div>
+<div class="h-6 w-px bg-outline-variant/50"></div>
+<button class="flex items-center gap-2 px-3 py-1.5 border border-primary/40 text-primary hover:bg-primary/10 rounded transition-colors text-sm font-label-sm">
+<span class="material-symbols-outlined text-[16px]">sync</span>
+                            Sync Real-time Data
+                        </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 rounded transition-colors text-sm font-label-sm">
+<span class="material-symbols-outlined text-[16px]">download</span>
+                            Export CSV
+                        </button>
+</div>
+</div>
+<!-- The Grid -->
+<div class="flex-1 overflow-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr>
+<th class="data-grid-header w-12 text-center">#</th>
+<th class="data-grid-header">Container ID</th>
+<th class="data-grid-header">Type</th>
+<th class="data-grid-header">Weight (tons)</th>
+<th class="data-grid-header">X-Coord</th>
+<th class="data-grid-header">Y-Coord</th>
+<th class="data-grid-header">Status</th>
+<th class="data-grid-header text-right">Actions</th>
+</tr>
+</thead>
+<tbody>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">1</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9901</td>
+<td class="data-grid-cell text-on-surface-variant">40' HC</td>
+<td class="data-grid-cell">28.5</td>
+<td class="data-grid-cell text-secondary">A-14</td>
+<td class="data-grid-cell text-secondary">Y-02</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-secondary/10 text-secondary border border-secondary/20">ACTIVE</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">2</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9902</td>
+<td class="data-grid-cell text-on-surface-variant">20' Dry</td>
+<td class="data-grid-cell">14.2</td>
+<td class="data-grid-cell text-outline-variant">B-05</td>
+<td class="data-grid-cell text-outline-variant">Y-11</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-surface-bright text-on-surface-variant border border-outline-variant/30">STAGED</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">3</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9903</td>
+<td class="data-grid-cell text-on-surface-variant">40' Reefer</td>
+<td class="data-grid-cell">32.1</td>
+<td class="data-grid-cell text-tertiary">C-22</td>
+<td class="data-grid-cell text-tertiary">Y-44</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-tertiary-container/20 text-tertiary border border-tertiary/30">HOLD</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">4</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9904</td>
+<td class="data-grid-cell text-on-surface-variant">40' Flat Rack</td>
+<td class="data-grid-cell">18.0</td>
+<td class="data-grid-cell text-primary">D-10</td>
+<td class="data-grid-cell text-primary">Y-15</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-primary/10 text-primary border border-primary/30">TRANSIT</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">5</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9905</td>
+<td class="data-grid-cell text-on-surface-variant">20' Tank</td>
+<td class="data-grid-cell">22.4</td>
+<td class="data-grid-cell text-secondary">A-15</td>
+<td class="data-grid-cell text-secondary">Y-03</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-secondary/10 text-secondary border border-secondary/20">ACTIVE</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">6</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9906</td>
+<td class="data-grid-cell text-on-surface-variant">40' HC</td>
+<td class="data-grid-cell">29.1</td>
+<td class="data-grid-cell text-outline-variant">E-02</td>
+<td class="data-grid-cell text-outline-variant">Y-21</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-surface-bright text-on-surface-variant border border-outline-variant/30">STAGED</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">7</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9907</td>
+<td class="data-grid-cell text-on-surface-variant">20' Dry</td>
+<td class="data-grid-cell">12.5</td>
+<td class="data-grid-cell text-tertiary">F-11</td>
+<td class="data-grid-cell text-tertiary">Y-33</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-tertiary-container/20 text-tertiary border border-tertiary/30">HOLD</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="data-grid-row">
+<td class="data-grid-cell text-center text-outline-variant">8</td>
+<td class="data-grid-cell font-bold text-on-surface">NX-9908</td>
+<td class="data-grid-cell text-on-surface-variant">40' Dry</td>
+<td class="data-grid-cell">25.0</td>
+<td class="data-grid-cell text-secondary">A-16</td>
+<td class="data-grid-cell text-secondary">Y-04</td>
+<td class="data-grid-cell">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-label-sm bg-secondary/10 text-secondary border border-secondary/20">ACTIVE</span>
+</td>
+<td class="data-grid-cell text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Right Panel: Live Terminal Feed -->
+<section class="flex-1 flex flex-col bg-[#050914] rounded-xl border border-outline-variant/20 shadow-lg overflow-hidden h-full min-w-[320px]">
+<div class="p-3 border-b border-outline-variant/20 bg-surface-container-lowest flex justify-between items-center">
+<h3 class="font-label-sm text-sm text-outline flex items-center gap-2 tracking-wider">
+<span class="material-symbols-outlined text-[18px] text-primary">terminal</span>
+                        LIVE TERMINAL FEED
+                    </h3>
+<div class="flex gap-1.5">
+<div class="w-2.5 h-2.5 rounded-full bg-surface-variant"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-surface-variant"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-secondary/50 animate-pulse"></div>
+</div>
+</div>
+<div class="flex-1 p-4 overflow-y-auto terminal-text">
+<div class="terminal-log-entry info">
+<span class="text-outline-variant">[10:42:01]</span> <span class="text-primary-fixed-dim">SYS:</span> Connecting to master orchestrator...
+                    </div>
+<div class="terminal-log-entry success">
+<span class="text-outline-variant">[10:42:02]</span> <span class="text-secondary-fixed">NET:</span> Connection established. Latency: 12ms
+                    </div>
+<div class="terminal-log-entry info">
+<span class="text-outline-variant">[10:42:05]</span> <span class="text-primary-fixed-dim">SYNC:</span> Receiving yard layout state (v4.2.1)
+                    </div>
+<div class="terminal-log-entry info">
+<span class="text-outline-variant">[10:42:08]</span> <span class="text-primary-fixed-dim">OP:</span> RTG-Crane-04 dispatched to zone A-14
+                    </div>
+<div class="terminal-log-entry info">
+<span class="text-outline-variant">[10:42:15]</span> <span class="text-primary-fixed-dim">DATA:</span> Matrix updated. 8234 containers tracked.
+                    </div>
+<div class="terminal-log-entry warning">
+<span class="text-outline-variant">[10:43:22]</span> <span class="text-tertiary">WARN:</span> Slight temp deviation detected in NX-9903 (Reefer). Target: -18C, Current: -17.2C
+                    </div>
+<div class="terminal-log-entry info">
+<span class="text-outline-variant">[10:44:01]</span> <span class="text-primary-fixed-dim">OP:</span> AGV-Unit-99 en route to D-10. ETA 4m 12s.
+                    </div>
+<div class="terminal-log-entry success">
+<span class="text-outline-variant">[10:45:30]</span> <span class="text-secondary-fixed">DATA:</span> Heartbeat ACK. System nominal.
+                    </div>
+<div class="terminal-log-entry info mt-4">
+<span class="text-secondary animate-pulse">_</span>
+</div>
+</div>
+</section>
+</div>
+</main>
+</body></html>

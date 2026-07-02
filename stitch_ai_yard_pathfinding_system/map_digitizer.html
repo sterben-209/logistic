@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Terminal - Map Digitizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --surface: #0b1326;
+            --surface-container: #171f33;
+            --primary: #adc6ff;
+            --secondary: #4edea3;
+        }
+        body { 
+            background-color: var(--surface); 
+            color: #dae2fd; 
+            font-family: 'Inter', sans-serif;
+        }
+        canvas { 
+            cursor: crosshair; 
+            touch-action: none;
+            background-color: #060e20;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+        }
+        /* Custom scrollbar for output */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--surface); }
+        ::-webkit-scrollbar-thumb { background: #31394d; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden">
+    <!-- Left Sidebar: Controls -->
+    <div class="w-80 bg-[#131b2e] border-r border-[#2d3449] p-4 flex flex-col gap-4 overflow-y-auto shrink-0 z-10 shadow-lg">
+        <div>
+            <h1 class="text-xl font-bold text-white tracking-wide">MAP DIGITIZER</h1>
+            <p class="text-[10px] text-[#8c909f] uppercase tracking-widest mt-1">Nexus Terminal Subsystem</p>
+        </div>
+        
+        <!-- PHASE 1: UPLOAD & WARP -->
+        <div class="p-3 bg-[#171f33] rounded-lg border border-[#2d3449]">
+            <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="bg-[#adc6ff] text-[#002e6a] w-5 h-5 flex items-center justify-center rounded-full text-xs">1</span> 
+                Upload & Warp
+            </h2>
+            <input type="file" id="upload-img" accept="image/jpeg, image/png" class="w-full text-xs mb-3 text-[#c2c6d6] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#adc6ff] file:text-[#002e6a] hover:file:bg-[#d8e2ff]" />
+            <div class="flex gap-2">
+                <button id="btn-pin" class="flex-1 bg-[#222a3d] border border-[#424754] text-[#dae2fd] py-1.5 rounded text-xs hover:bg-[#31394d] hover:border-[#8c909f] transition-colors" title="Click 4 corners of the yard">📍 Pin Corners</button>
+                <button id="btn-flatten" class="flex-1 bg-[#00a572]/20 border border-[#4edea3] text-[#4edea3] py-1.5 rounded text-xs hover:bg-[#00a572]/40 transition-colors">📐 Flatten</button>
+            </div>
+            <div id="pin-status" class="text-[10px] text-[#8c909f] mt-2 text-center">0/4 Pins Set</div>
+        </div>
+
+        <!-- PHASE 2: CALIBRATION -->
+        <div class="p-3 bg-[#171f33] rounded-lg border border-[#2d3449]">
+            <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="bg-[#adc6ff] text-[#002e6a] w-5 h-5 flex items-center justify-center rounded-full text-xs">2</span> 
+                Scale Calibration
+            </h2>
+            <button id="btn-ruler" class="w-full bg-[#222a3d] border border-[#424754] text-[#dae2fd] py-1.5 rounded text-xs hover:bg-[#31394d] transition-colors mb-2">📏 Draw Ruler Line</button>
+            <div class="bg-[#0b1326] p-2 rounded border border-[#2d3449] font-mono text-[11px]">
+                <div class="text-[#8c909f]">Ratio (px/m):</div>
+                <div id="ratio-display" class="text-[#4edea3] font-bold">Not calibrated</div>
+            </div>
+        </div>
+
+        <!-- PHASE 3 & 4: ZONING & AUTO-GRID -->
+        <div class="p-3 bg-[#171f33] rounded-lg border border-[#2d3449]">
+            <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="bg-[#adc6ff] text-[#002e6a] w-5 h-5 flex items-center justify-center rounded-full text-xs">3 & 4</span> 
+                Zoning & Auto-Grid
+            </h2>
+            <label class="text-[10px] text-[#8c909f] uppercase mb-1 block">Zone Type</label>
+            <select id="zone-type" class="w-full bg-[#0b1326] border border-[#424754] rounded p-1.5 mb-3 text-xs text-white outline-none focus:border-[#adc6ff]">
+                <option value="Storage">Storage (Auto-Grid)</option>
+                <option value="Road">Road</option>
+                <option value="Building">Building / Obstacle</option>
+            </select>
+            <button id="btn-draw-zone" class="w-full bg-[#4d8eff]/20 border border-[#adc6ff] text-[#adc6ff] py-1.5 rounded text-xs hover:bg-[#4d8eff]/40 font-semibold transition-colors mb-3">✏️ Draw Zone</button>
+            
+            <div class="flex gap-2">
+                <button id="btn-undo" class="flex-1 bg-[#222a3d] border border-[#424754] text-white py-1 rounded text-xs hover:bg-[#31394d]">Undo</button>
+                <button id="btn-clear" class="flex-1 bg-[#93000a]/30 border border-[#ffb4ab] text-[#ffdad6] py-1 rounded text-xs hover:bg-[#93000a]/60">Clear All</button>
+            </div>
+        </div>
+
+        <!-- PHASE 5: EXPORT -->
+        <div class="p-3 bg-[#171f33] rounded-lg border border-[#2d3449] mt-auto">
+            <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="bg-[#adc6ff] text-[#002e6a] w-5 h-5 flex items-center justify-center rounded-full text-xs">5</span> 
+                Export JSON
+            </h2>
+            <button id="btn-export" class="w-full bg-[#adc6ff] text-[#002e6a] py-2 rounded font-bold hover:bg-[#d8e2ff] transition-colors mb-2 text-sm shadow-[0_0_10px_rgba(173,198,255,0.3)]">Export to Database</button>
+            <textarea id="export-output" class="w-full h-32 bg-[#060e20] text-[#6ffbbe] font-mono text-[10px] p-2 rounded border border-[#2d3449] outline-none" readonly placeholder="// JSON Output..."></textarea>
+        </div>
+    </div>
+
+    <!-- Right Workspace: Canvas -->
+    <div class="flex-1 relative bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdHRlcm4gaWQ9InNtYWxsR3JpZCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNMTAgMEwwIDBMMCAxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMWMyNDNjIiBzdHJva2Utd2lkdGg9IjAuNSIvPjwvcGF0dGVybj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIGZpbGw9InVybCgjc21hbGxHcmlkKSIvPjxwYXRoIGQ9Ik00MCAwTDAgMEwwIDQwIiBmaWxsPSJub25lIiBzdHJva2U9IiMxYzI0M2MiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] flex items-center justify-center overflow-auto p-4" id="canvas-container">
+        <canvas id="main-canvas" width="800" height="600" class="rounded-lg border border-[#2d3449]"></canvas>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        
+        // State
+        let imgObj = null;
+        let bgImgData = null; // Flattened background
+        
+        let mode = 'idle'; // 'pin', 'ruler', 'zone', 'idle'
+        let pins = []; // 4 points {x,y}
+        let rulerLine = []; // 2 points {x,y}
+        
+        let pixelToMeterRatio = null; // pixels per meter
+        
+        let mapZones = [];
+        let yardGrid = [];
+        let currentRect = null; // {startX, startY, w, h} while dragging
+        let isDragging = false;
+        
+        // Slot Config
+        const SLOT_WIDTH_M = 3;
+        const SLOT_HEIGHT_M = 13;
+
+        // Elements
+        const fileInput = document.getElementById('upload-img');
+        const pinBtn = document.getElementById('btn-pin');
+        const flattenBtn = document.getElementById('btn-flatten');
+        const pinStatus = document.getElementById('pin-status');
+        
+        const rulerBtn = document.getElementById('btn-ruler');
+        const ratioDisplay = document.getElementById('ratio-display');
+        
+        const drawZoneBtn = document.getElementById('btn-draw-zone');
+        const zoneTypeSel = document.getElementById('zone-type');
+        const undoBtn = document.getElementById('btn-undo');
+        const clearBtn = document.getElementById('btn-clear');
+        
+        const exportBtn = document.getElementById('btn-export');
+        const exportOut = document.getElementById('export-output');
+
+        // --- Core Render Loop ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Background Image
+            if (bgImgData) {
+                ctx.drawImage(bgImgData, 0, 0, canvas.width, canvas.height);
+            } else if (imgObj) {
+                ctx.drawImage(imgObj, 0, 0, canvas.width, canvas.height);
+            }
+
+            // Draw Pins
+            if (pins.length > 0) {
+                ctx.strokeStyle = '#ffb4ab';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(pins[0].x, pins[0].y);
+                for(let i=1; i<pins.length; i++) ctx.lineTo(pins[i].x, pins[i].y);
+                if(pins.length === 4) ctx.closePath();
+                ctx.stroke();
+
+                pins.forEach((p, i) => {
+                    ctx.fillStyle = '#ff5451';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(i+1, p.x + 8, p.y - 8);
+                });
+            }
+
+            // Draw Ruler
+            if (rulerLine.length > 0) {
+                ctx.strokeStyle = '#ff5451';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(rulerLine[0].x, rulerLine[0].y);
+                if(rulerLine[1]) ctx.lineTo(rulerLine[1].x, rulerLine[1].y);
+                ctx.stroke();
+                
+                rulerLine.forEach(p => {
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+                    ctx.fill();
+                });
+            }
+
+            // Draw Saved Zones
+            mapZones.forEach(z => drawZone(z));
+
+            // Draw Grid Slots
+            yardGrid.forEach(slot => {
+                ctx.strokeStyle = 'rgba(78, 222, 163, 0.4)'; // neon green mờ
+                ctx.lineWidth = 1;
+                ctx.strokeRect(slot.x, slot.y, slot.w, slot.h);
+            });
+
+            // Draw Active Dragging Zone
+            if (currentRect && mode === 'zone') {
+                const tempZone = { ...currentRect, type: zoneTypeSel.value };
+                drawZone(tempZone);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        function drawZone(z) {
+            ctx.lineWidth = 2;
+            if (z.type === 'Storage') {
+                ctx.strokeStyle = '#4d8eff'; // Blue
+                ctx.fillStyle = 'rgba(77, 142, 255, 0.1)';
+            } else if (z.type === 'Road') {
+                ctx.strokeStyle = '#8c909f'; // Gray
+                ctx.fillStyle = 'rgba(140, 144, 159, 0.3)';
+            } else if (z.type === 'Building') {
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            }
+            
+            ctx.fillRect(z.startX, z.startY, z.width, z.height);
+            ctx.strokeRect(z.startX, z.startY, z.width, z.height);
+            
+            // Draw Dimensions if calibrated
+            if (pixelToMeterRatio) {
+                const wm = Math.abs(z.width / pixelToMeterRatio).toFixed(1);
+                const hm = Math.abs(z.height / pixelToMeterRatio).toFixed(1);
+                ctx.fillStyle = 'white';
+                ctx.font = '10px JetBrains Mono, monospace';
+                ctx.fillText(`${wm}m x ${hm}m`, z.startX + 5, z.startY + 15);
+            }
+        }
+
+        // --- Interaction Handlers ---
+        
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            if (mode === 'pin') {
+                if (pins.length < 4) {
+                    pins.push(pos);
+                    pinStatus.textContent = `${pins.length}/4 Pins Set`;
+                }
+            } else if (mode === 'ruler') {
+                if (rulerLine.length === 0) rulerLine.push(pos);
+                else if (rulerLine.length === 1) {
+                    rulerLine.push(pos);
+                    processRuler();
+                } else {
+                    rulerLine = [pos];
+                }
+            } else if (mode === 'zone') {
+                isDragging = true;
+                currentRect = { startX: pos.x, startY: pos.y, width: 0, height: 0 };
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging && mode === 'zone') {
+                const pos = getMousePos(e);
+                currentRect.width = pos.x - currentRect.startX;
+                currentRect.height = pos.y - currentRect.startY;
+            } else if (mode === 'ruler' && rulerLine.length === 1) {
+                const pos = getMousePos(e);
+                rulerLine[1] = pos; // Temporary preview
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isDragging && mode === 'zone') {
+                isDragging = false;
+                if (Math.abs(currentRect.width) > 10 && Math.abs(currentRect.height) > 10) {
+                    saveZone();
+                }
+                currentRect = null;
+            }
+        });
+
+        // --- Phase 1: Upload & Warp ---
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = Math.min(1200, img.width);
+                    canvas.height = (img.height / img.width) * canvas.width;
+                    imgObj = img;
+                    bgImgData = null;
+                    pins = [];
+                    pinStatus.textContent = `0/4 Pins Set`;
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        pinBtn.addEventListener('click', () => { mode = 'pin'; pins = []; pinStatus.textContent = `0/4 Pins Set`; });
+        
+        flattenBtn.addEventListener('click', () => {
+            if (pins.length !== 4 || !imgObj) return alert("Please upload an image and set exactly 4 pins.");
+            // 2D Affine Warp Approximation (Crop to Bounding Box for this tool)
+            const minX = Math.min(...pins.map(p=>p.x));
+            const maxX = Math.max(...pins.map(p=>p.x));
+            const minY = Math.min(...pins.map(p=>p.y));
+            const maxY = Math.max(...pins.map(p=>p.y));
+            
+            const off = document.createElement('canvas');
+            off.width = canvas.width;
+            off.height = canvas.height;
+            const octx = off.getContext('2d');
+            octx.drawImage(imgObj, 0, 0, canvas.width, canvas.height);
+            
+            const croppedData = octx.getImageData(minX, minY, maxX - minX, maxY - minY);
+            canvas.width = maxX - minX;
+            canvas.height = maxY - minY;
+            
+            const off2 = document.createElement('canvas');
+            off2.width = canvas.width;
+            off2.height = canvas.height;
+            off2.getContext('2d').putImageData(croppedData, 0, 0);
+            
+            const newImg = new Image();
+            newImg.onload = () => {
+                bgImgData = newImg;
+                imgObj = null;
+                pins = [];
+                pinStatus.textContent = "Image Flattened!";
+            }
+            newImg.src = off2.toDataURL();
+        });
+
+        // --- Phase 2: Calibration ---
+        
+        rulerBtn.addEventListener('click', () => { mode = 'ruler'; rulerLine = []; });
+        
+        function processRuler() {
+            const dx = rulerLine[1].x - rulerLine[0].x;
+            const dy = rulerLine[1].y - rulerLine[0].y;
+            const pxDist = Math.sqrt(dx*dx + dy*dy);
+            
+            setTimeout(() => {
+                const meters = prompt(`Line drawn is ${pxDist.toFixed(2)} pixels.\nEnter real-world distance in meters:`);
+                if (meters && !isNaN(meters) && meters > 0) {
+                    pixelToMeterRatio = pxDist / parseFloat(meters);
+                    ratioDisplay.textContent = `${pixelToMeterRatio.toFixed(2)} px/m`;
+                    mode = 'idle';
+                    rulerLine = [];
+                } else {
+                    rulerLine = []; // reset
+                }
+            }, 50);
+        }
+
+        // --- Phase 3 & 4: Zoning & Auto Grid ---
+        
+        drawZoneBtn.addEventListener('click', () => {
+            if(!pixelToMeterRatio) return alert("Please calibrate scale (Phase 2) first!");
+            mode = 'zone';
+        });
+        
+        undoBtn.addEventListener('click', () => {
+            const last = mapZones.pop();
+            if(last && last.type === 'Storage') {
+                yardGrid = yardGrid.filter(s => s.zoneId !== last.id);
+            }
+        });
+        clearBtn.addEventListener('click', () => { mapZones = []; yardGrid = []; });
+
+        function saveZone() {
+            let x = currentRect.width < 0 ? currentRect.startX + currentRect.width : currentRect.startX;
+            let y = currentRect.height < 0 ? currentRect.startY + currentRect.height : currentRect.startY;
+            let w = Math.abs(currentRect.width);
+            let h = Math.abs(currentRect.height);
+
+            const zone = {
+                id: 'zone_' + Date.now(),
+                type: zoneTypeSel.value,
+                startX: x,
+                startY: y,
+                width: w,
+                height: h,
+                realWidthMeters: w / pixelToMeterRatio,
+                realHeightMeters: h / pixelToMeterRatio
+            };
+            
+            mapZones.push(zone);
+
+            if (zone.type === 'Storage') {
+                generateGrid(zone);
+            }
+        }
+
+        function generateGrid(zone) {
+            const slotPxW = SLOT_WIDTH_M * pixelToMeterRatio;
+            const slotPxH = SLOT_HEIGHT_M * pixelToMeterRatio;
+            
+            const cols = Math.floor(zone.width / slotPxW);
+            const rows = Math.floor(zone.height / slotPxH);
+            
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const gx = zone.startX + c * slotPxW;
+                    const gy = zone.startY + r * slotPxH;
+                    
+                    yardGrid.push({
+                        id: `slot_${zone.id}_${r}_${c}`,
+                        zoneId: zone.id,
+                        row: r,
+                        col: c,
+                        x: gx,
+                        y: gy,
+                        w: slotPxW,
+                        h: slotPxH,
+                        status: 'Empty'
+                    });
+                }
+            }
+        }
+
+        // --- Phase 5: Export ---
+        
+        exportBtn.addEventListener('click', () => {
+            const payload = {
+                metadata: {
+                    pixelToMeterRatio: pixelToMeterRatio,
+                    generatedAt: new Date().toISOString()
+                },
+                zones: mapZones.map(z => ({
+                    id: z.id,
+                    type: z.type,
+                    realWidthMeters: z.realWidthMeters,
+                    realHeightMeters: z.realHeightMeters,
+                    pixelBounds: { x: z.startX, y: z.startY, w: z.width, h: z.height }
+                })),
+                grid_slots: yardGrid.map(s => ({
+                    id: s.id,
+                    zoneId: s.zoneId,
+                    status: s.status,
+                    pixelBounds: { x: s.x, y: s.y, w: s.w, h: s.h }
+                }))
+            };
+            
+            exportOut.value = JSON.stringify(payload, null, 2);
+        });
+
+        // Start Loop
+        requestAnimationFrame(draw);
+    </script>
+</body>
+</html>

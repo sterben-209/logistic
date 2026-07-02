@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NEXUS TERMINAL - Registration</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#0b1326",
+                        "surface": "#0b1326",
+                        "on-secondary-fixed": "#002113",
+                        "on-tertiary": "#68000a",
+                        "on-primary": "#002e6a",
+                        "surface-container-low": "#131b2e",
+                        "inverse-on-surface": "#283044",
+                        "on-primary-fixed-variant": "#004395",
+                        "error": "#ffb4ab",
+                        "on-secondary": "#003824",
+                        "surface-variant": "#2d3449",
+                        "secondary-fixed-dim": "#4edea3",
+                        "tertiary-container": "#ff5451",
+                        "surface-tint": "#adc6ff",
+                        "secondary-container": "#00a572",
+                        "tertiary-fixed-dim": "#ffb3ad",
+                        "on-primary-container": "#00285d",
+                        "outline": "#8c909f",
+                        "surface-bright": "#31394d",
+                        "on-error": "#690005",
+                        "secondary": "#4edea3",
+                        "primary-fixed-dim": "#adc6ff",
+                        "surface-container-high": "#222a3d",
+                        "inverse-surface": "#dae2fd",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad7",
+                        "on-surface-variant": "#c2c6d6",
+                        "surface-container-lowest": "#060e20",
+                        "on-primary-fixed": "#001a42",
+                        "on-surface": "#dae2fd",
+                        "on-tertiary-fixed": "#410004",
+                        "on-tertiary-fixed-variant": "#930013",
+                        "on-tertiary-container": "#5c0008",
+                        "primary-fixed": "#d8e2ff",
+                        "outline-variant": "#424754",
+                        "primary": "#adc6ff",
+                        "error-container": "#93000a",
+                        "on-background": "#dae2fd",
+                        "primary-container": "#4d8eff",
+                        "on-secondary-fixed-variant": "#005236",
+                        "inverse-primary": "#005ac2",
+                        "surface-container": "#171f33",
+                        "secondary-fixed": "#6ffbbe",
+                        "background": "#0b1326",
+                        "tertiary": "#ffb3ad",
+                        "surface-container-highest": "#2d3449",
+                        "on-secondary-container": "#00311f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-mobile": "16px",
+                        "margin-desktop": "24px",
+                        "panel-gap": "12px",
+                        "base": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["JetBrains Mono"],
+                        "telemetry-num": ["JetBrains Mono"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "title-md": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "telemetry-num": ["14px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #020617; /* Level 0 Background */
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .input-field {
+            background-color: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease-in-out;
+        }
+        .input-field:focus {
+            border-color: #adc6ff; /* primary */
+            box-shadow: 0 0 10px rgba(173, 198, 255, 0.15);
+            outline: none;
+        }
+        .btn-primary {
+            background-color: #4d8eff; /* primary-container approx Electric Blue */
+            color: #ffffff;
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-primary:hover {
+            background-color: #adc6ff;
+            box-shadow: 0 4px 20px rgba(77, 142, 255, 0.3);
+        }
+        .scanline {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(255,255,255,0.02) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(78, 222, 163, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(78, 222, 163, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(78, 222, 163, 0); }
+        }
+    </style>
+</head>
+<body class="text-on-surface antialiased min-h-screen flex items-center justify-center relative overflow-hidden">
+<!-- Atmospheric Background -->
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-surface-container-low/50 via-surface/80 to-[#020617]"></div>
+<div class="absolute w-full h-full opacity-20" style="background-image: radial-gradient(#4d8eff 1px, transparent 1px); background-size: 32px 32px;"></div>
+<div class="scanline"></div>
+</div>
+<!-- Registration Container -->
+<div class="relative z-10 w-full max-w-2xl px-margin-mobile md:px-0">
+<!-- Header -->
+<div class="mb-8 text-center">
+<div class="inline-flex items-center justify-center gap-3 mb-4">
+<span class="material-symbols-outlined text-4xl text-primary" style="font-variation-settings: 'FILL' 1;">terminal</span>
+<h1 class="font-display-lg text-display-lg text-primary tracking-tight">NEXUS TERMINAL</h1>
+</div>
+<p class="font-label-sm text-label-sm text-secondary uppercase tracking-widest flex items-center justify-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary pulse-dot"></span>
+                Secure Protocol Initialization
+            </p>
+</div>
+<!-- Form Panel -->
+<div class="glass-panel rounded-xl p-8 md:p-10 relative overflow-hidden">
+<!-- Decorative corner markers -->
+<div class="absolute top-0 left-0 w-4 h-4 border-t border-l border-primary/50 m-2"></div>
+<div class="absolute top-0 right-0 w-4 h-4 border-t border-r border-primary/50 m-2"></div>
+<div class="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-primary/50 m-2"></div>
+<div class="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-primary/50 m-2"></div>
+<h2 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-6 border-b border-outline-variant/30 pb-4">
+                Request Access
+            </h2>
+<form class="space-y-6">
+<!-- Personal Info Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">person</span> Full Name
+                        </label>
+<input class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface" placeholder="Enter full name" type="text"/>
+</div>
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">mail</span> Professional Email
+                        </label>
+<input class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface" placeholder="system.op@nexus.local" type="email"/>
+</div>
+</div>
+<!-- Professional Info Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">corporate_fare</span> Department
+                        </label>
+<select class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23c2c6d6%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[position:right_0.75rem_center] bg-[length:1.2em_1.2em]">
+<option value="">Select Department</option>
+<option value="logistics">Logistics Command</option>
+<option value="telemetry">Telemetry Systems</option>
+<option value="security">Terminal Security</option>
+</select>
+</div>
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">security</span> Clearance Level
+                        </label>
+<select class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface appearance-none bg-no-repeat bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23c2c6d6%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[position:right_0.75rem_center] bg-[length:1.2em_1.2em]">
+<option value="">Select Level</option>
+<option value="alpha">Alpha (Standard)</option>
+<option value="beta">Beta (Supervisor)</option>
+<option value="omega">Omega (Director)</option>
+</select>
+</div>
+</div>
+<!-- Security -->
+<div class="space-y-4 pt-4 border-t border-outline-variant/30">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">key</span> Password
+                            </label>
+<input class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface" placeholder="••••••••" type="password"/>
+<!-- Strength Indicator -->
+<div class="flex gap-1 mt-2 h-1 w-full">
+<div class="bg-surface-variant h-full flex-1 rounded-full"></div>
+<div class="bg-surface-variant h-full flex-1 rounded-full"></div>
+<div class="bg-surface-variant h-full flex-1 rounded-full"></div>
+<div class="bg-surface-variant h-full flex-1 rounded-full"></div>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">lock_reset</span> Confirm Password
+                            </label>
+<input class="input-field w-full rounded p-3 font-body-md text-body-md text-on-surface" placeholder="••••••••" type="password"/>
+</div>
+</div>
+</div>
+<!-- TOS & Submit -->
+<div class="pt-6 space-y-6">
+<label class="flex items-start gap-3 cursor-pointer group">
+<div class="relative flex items-center mt-1">
+<input class="input-field rounded w-5 h-5 border-outline-variant text-primary focus:ring-primary focus:ring-offset-surface" type="checkbox"/>
+</div>
+<span class="font-body-md text-body-md text-on-surface-variant group-hover:text-on-surface transition-colors">
+                            I acknowledge the operational directives and agree to the <a class="text-primary hover:underline" href="#">Terms of Service</a> for system access.
+                        </span>
+</label>
+<button class="btn-primary w-full py-4 rounded font-title-md text-title-md uppercase tracking-wider flex items-center justify-center gap-2" type="button">
+<span class="material-symbols-outlined">how_to_reg</span>
+                        Submit Registration
+                    </button>
+</div>
+</form>
+<div class="mt-6 text-center">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors inline-flex items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span> Return to Login
+                </a>
+</div>
+</div>
+<!-- Footer Info -->
+<div class="mt-8 text-center opacity-50">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">
+                SYS_ID: NX-7729 | STATUS: SECURE | ENCRYPTION: AES-256
+            </p>
+</div>
+</div>
+</body></html>

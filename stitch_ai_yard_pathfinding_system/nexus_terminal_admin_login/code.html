@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nexus Terminal - Secure Access</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#0b1326",
+                    "surface": "#0b1326",
+                    "on-secondary-fixed": "#002113",
+                    "on-tertiary": "#68000a",
+                    "on-primary": "#002e6a",
+                    "surface-container-low": "#131b2e",
+                    "inverse-on-surface": "#283044",
+                    "on-primary-fixed-variant": "#004395",
+                    "error": "#ffb4ab",
+                    "on-secondary": "#003824",
+                    "surface-variant": "#2d3449",
+                    "secondary-fixed-dim": "#4edea3",
+                    "tertiary-container": "#ff5451",
+                    "surface-tint": "#adc6ff",
+                    "secondary-container": "#00a572",
+                    "tertiary-fixed-dim": "#ffb3ad",
+                    "on-primary-container": "#00285d",
+                    "outline": "#8c909f",
+                    "surface-bright": "#31394d",
+                    "on-error": "#690005",
+                    "secondary": "#4edea3",
+                    "primary-fixed-dim": "#adc6ff",
+                    "surface-container-high": "#222a3d",
+                    "inverse-surface": "#dae2fd",
+                    "on-error-container": "#ffdad6",
+                    "tertiary-fixed": "#ffdad7",
+                    "on-surface-variant": "#c2c6d6",
+                    "surface-container-lowest": "#060e20",
+                    "on-primary-fixed": "#001a42",
+                    "on-surface": "#dae2fd",
+                    "on-tertiary-fixed": "#410004",
+                    "on-tertiary-fixed-variant": "#930013",
+                    "on-tertiary-container": "#5c0008",
+                    "primary-fixed": "#d8e2ff",
+                    "outline-variant": "#424754",
+                    "primary": "#adc6ff",
+                    "error-container": "#93000a",
+                    "on-background": "#dae2fd",
+                    "primary-container": "#4d8eff",
+                    "on-secondary-fixed-variant": "#005236",
+                    "inverse-primary": "#005ac2",
+                    "surface-container": "#171f33",
+                    "secondary-fixed": "#6ffbbe",
+                    "background": "#0b1326",
+                    "tertiary": "#ffb3ad",
+                    "surface-container-highest": "#2d3449",
+                    "on-secondary-container": "#00311f"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "margin-mobile": "16px",
+                    "margin-desktop": "24px",
+                    "panel-gap": "12px",
+                    "base": "4px",
+                    "gutter": "16px"
+            },
+            "fontFamily": {
+                    "label-sm": [
+                            "JetBrains Mono"
+                    ],
+                    "telemetry-num": [
+                            "JetBrains Mono"
+                    ],
+                    "headline-lg-mobile": [
+                            "Inter"
+                    ],
+                    "headline-lg": [
+                            "Inter"
+                    ],
+                    "title-md": [
+                            "Inter"
+                    ],
+                    "display-lg": [
+                            "Inter"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "telemetry-num": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-lg-mobile": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "title-md": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+        },
+        },
+      }
+    </script>
+<style>
+        /* Custom glow effects to augment Tailwind shadows */
+        .glow-accent {
+            box-shadow: 0 4px 30px rgba(77, 142, 255, 0.15);
+        }
+        .input-glow:focus {
+            box-shadow: 0 0 0 2px rgba(173, 198, 255, 0.2), inset 0 0 8px rgba(173, 198, 255, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-body-md min-h-screen flex flex-col relative overflow-hidden antialiased">
+<!-- Ambient Background Layer -->
+<div class="fixed inset-0 pointer-events-none z-0 overflow-hidden flex items-center justify-center opacity-30">
+<!-- Technical Grid Pattern -->
+<svg class="absolute inset-0 w-full h-full text-surface-variant" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="48" id="industrial-grid" patternunits="userSpaceOnUse" width="48">
+<path d="M 48 0 L 0 0 0 48" fill="none" stroke="currentColor" stroke-dasharray="2 2" stroke-width="0.5"></path>
+<circle cx="0" cy="0" fill="currentColor" r="1"></circle>
+</pattern>
+<radialgradient cx="50%" cy="50%" fx="50%" fy="50%" id="grid-fade" r="50%">
+<stop offset="0%" stop-color="black" stop-opacity="1"></stop>
+<stop offset="100%" stop-color="black" stop-opacity="0"></stop>
+</radialgradient>
+</defs>
+<rect fill="url(#industrial-grid)" height="100%" width="100%"></rect>
+<!-- Inner shadow overlay to dim edges -->
+<rect fill="url(#industrial-grid)" height="100%" mask="url(#grid-mask)" width="100%"></rect>
+</svg>
+<!-- Subtle Neon Radial Glow -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[100px]"></div>
+</div>
+<!-- Main Canvas / Login Area -->
+<main class="flex-1 flex flex-col justify-center items-center px-4 relative z-10 w-full">
+<!-- Login Card Panel -->
+<div class="w-full max-w-[440px] bg-surface-container/80 backdrop-blur-xl border border-outline-variant/50 rounded-xl glow-accent relative overflow-hidden">
+<!-- Top Accent Line -->
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-70"></div>
+<div class="p-8 md:p-10 flex flex-col gap-8">
+<!-- Brand Header -->
+<div class="flex flex-col items-center text-center gap-2">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center mb-2 shadow-sm text-primary">
+<span class="material-symbols-outlined" data-icon="terminal" style="font-variation-settings: 'FILL' 1; font-size: 28px;">terminal</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg tracking-tight text-on-surface">NEXUS TERMINAL</h1>
+<p class="font-label-sm text-label-sm text-primary uppercase tracking-widest">Secure Protocol Active</p>
+</div>
+<!-- Form Area -->
+<form id="login-form" class="flex flex-col gap-5">
+<!-- Email / Admin ID Input -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider flex justify-between" for="admin-id">
+<span>Email / Admin ID</span>
+<span class="text-error opacity-0 transition-opacity" id="admin-error">Required</span>
+</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant" data-icon="person" style="font-size: 20px;">person</span>
+<input autocomplete="username" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg py-2.5 pl-10 pr-4 text-on-surface font-body-md text-body-md placeholder-outline focus:border-primary focus:outline-none input-glow transition-all" id="admin-id" placeholder="OP-7734" required="" type="text"/>
+</div>
+</div>
+<!-- Password Input -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider" for="password">
+                            Password
+                        </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant" data-icon="key" style="font-size: 20px;">key</span>
+<input autocomplete="current-password" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg py-2.5 pl-10 pr-10 text-on-surface font-body-md text-body-md placeholder-outline focus:border-primary focus:outline-none input-glow transition-all" id="password" placeholder="••••••••" required="" type="password"/>
+<button aria-label="Toggle password visibility" class="absolute right-3 top-1/2 -translate-y-1/2 text-outline-variant hover:text-primary transition-colors flex items-center" type="button">
+<span class="material-symbols-outlined" data-icon="visibility" style="font-size: 20px;">visibility</span>
+</button>
+</div>
+</div>
+<!-- Options Row -->
+<div class="flex items-center justify-between mt-1">
+<label class="flex items-center gap-2 cursor-pointer group">
+<div class="relative flex items-center justify-center w-4 h-4">
+<input class="peer appearance-none w-4 h-4 border border-outline-variant rounded bg-surface-container-lowest checked:bg-primary checked:border-primary transition-colors cursor-pointer outline-none focus:ring-1 focus:ring-primary focus:ring-offset-1 focus:ring-offset-surface-container" type="checkbox"/>
+<span class="material-symbols-outlined absolute text-on-primary-container pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" data-icon="check" style="font-size: 14px; font-weight: 700;">check</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Remember Me</span>
+</label>
+<a class="font-label-sm text-label-sm text-primary hover:text-primary-fixed-dim hover:underline transition-colors" href="#">Forgot Password?</a>
+</div>
+<!-- Actions -->
+<div class="flex flex-col gap-3 mt-4">
+<button class="w-full bg-primary-container text-on-primary-container font-title-md text-title-md py-3 px-4 rounded-lg hover:bg-primary-fixed-dim active:scale-[0.98] transition-all flex justify-center items-center gap-2 shadow-sm" type="submit">
+<span>Access Terminal</span>
+<span class="material-symbols-outlined" data-icon="login" style="font-size: 20px;">login</span>
+</button>
+<div class="relative flex items-center py-2">
+<div class="flex-grow border-t border-outline-variant/50"></div>
+<span class="flex-shrink-0 mx-4 font-label-sm text-label-sm text-outline-variant uppercase">Or</span>
+<div class="flex-grow border-t border-outline-variant/50"></div>
+</div>
+<button class="w-full bg-transparent border border-outline-variant text-on-surface-variant font-title-md text-title-md py-3 px-4 rounded-lg hover:bg-surface-variant hover:text-on-surface hover:border-outline active:scale-[0.98] transition-all flex justify-center items-center gap-2" type="button">
+<span class="material-symbols-outlined" data-icon="vpn_key" style="font-size: 20px;">vpn_key</span>
+<span>Sign in with SSO</span>
+</button>
+</div>
+</form>
+</div>
+<!-- Bottom Helper -->
+<div class="bg-surface-container-low border-t border-outline-variant/30 p-4 text-center">
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+                    Unauthorized access prohibited. <a class="text-primary hover:underline ml-1" href="#">Request Access</a>
+</p>
+</div>
+</div>
+</main>
+<!-- Footer Component Execution -->
+<footer class="w-full py-4 border-t border-outline-variant/30 flex flex-col md:flex-row justify-between items-center px-margin-desktop gap-4 bg-surface-dim dark:bg-surface-dim z-20 relative">
+<div class="font-label-sm text-label-sm text-outline text-on-surface-variant dark:text-on-surface-variant">
+            © 2024 NEXUS LOGISTICS TERMINAL. SECURE PROTOCOL ACTIVE.
+        </div>
+<nav class="flex gap-6">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-surface-bright transition-opacity hover:opacity-80" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-surface-bright transition-opacity hover:opacity-80" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-surface-bright transition-opacity hover:opacity-80" href="#">API Status</a>
+</nav>
+</footer>
+<script>
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id = document.getElementById('admin-id').value;
+        const pwd = document.getElementById('password').value;
+        const errorSpan = document.getElementById('admin-error');
+        
+        if (id === 'admin' && pwd === '123456') {
+            window.location.href = '../nexus_terminal_analytics/code.html';
+        } else {
+            errorSpan.textContent = 'sai tài khoản hoặc mật khẩu';
+            errorSpan.classList.remove('opacity-0');
+        }
+    });
+</script>
+</body></html>

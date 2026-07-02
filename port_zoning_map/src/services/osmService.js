@@ -68,25 +68,25 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
             }
           } 
           else if (el.tags.highway) {
-            // Biến đường kẻ (LineString) thành một vùng đa giác (Polygon) rộng 6 mét (buffer 3m mỗi bên)
-            if (path[0][0] !== path[path.length - 1][0] || path[0][1] !== path[path.length - 1][1]) {
-              const line = turf.lineString(path.map(p => [p[1], p[0]]));
-              roadLineStrings.push(line);
+            // Loại bỏ các đường không dành cho xe tải / container
+            const excludedHighways = ['footway', 'path', 'pedestrian', 'steps', 'cycleway', 'corridor', 'track'];
+            if (excludedHighways.includes(el.tags.highway)) return;
 
-              const buffer = turf.buffer(line, 4, { units: 'meters' });
-              const leafPath = buffer.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
-              features.push({
-                id: `osm-road-${el.id}`,
-                type: 'ROAD',
-                name: el.tags.name || 'Đường nội bộ',
-                path: leafPath
-              });
-            } else {
-               // Là đường vòng khép kín hoặc area=yes
+            if (el.tags.area === 'yes') {
                features.push({
                 id: `osm-road-${el.id}`,
                 type: 'ROAD',
-                name: el.tags.name || 'Vòng xuyến / Sân',
+                name: el.tags.name || 'Khu vực lưu thông chung',
+                path: path
+              });
+            } else {
+              const line = turf.lineString(path.map(p => [p[1], p[0]]));
+              roadLineStrings.push(line);
+
+              features.push({
+                id: `osm-roadline-${el.id}`,
+                type: 'ROAD_LINE',
+                name: el.tags.name || 'Đường nội bộ',
                 path: path
               });
             }
@@ -201,6 +201,50 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
       try {
         if (portBoundaryGeoJSON.type === 'Polygon' || portBoundaryGeoJSON.type === 'MultiPolygon') {
           boundaryPolygon = portBoundaryGeoJSON; // Đã là geojson chuẩn từ Nominatim
+          
+          // Kết hợp Cách 1: Giao cắt giữa đường OSM và khung ranh giới cảng để tìm Cổng chính xác
+          if (roadLineStrings.length > 0) {
+            try {
+               const boundaryLines = turf.polygonToLine(boundaryPolygon);
+               const tempGates = [];
+               roadLineStrings.forEach(roadLine => {
+                  // Giảm bộ lọc độ dài xuống 15 mét vì trong nội thành nhiều đoạn đường (way) bị cắt rất ngắn
+                  const length = turf.length(roadLine, { units: 'meters' });
+                  if (length < 15) return;
+
+                  const intersections = turf.lineIntersect(boundaryLines, roadLine);
+                  intersections.features.forEach(pt => {
+                      tempGates.push([pt.geometry.coordinates[1], pt.geometry.coordinates[0]]);
+                  });
+               });
+               
+               // Clustering: Gộp các cổng cách nhau dưới 20 mét
+               const clusteredGates = [];
+               tempGates.forEach(pt1 => {
+                   let isMerged = false;
+                   for (let i = 0; i < clusteredGates.length; i++) {
+                       const pt2 = clusteredGates[i];
+                       const dist = turf.distance(turf.point([pt1[1], pt1[0]]), turf.point([pt2[1], pt2[0]]), { units: 'meters' });
+                       if (dist < 20) {
+                           isMerged = true;
+                           break;
+                       }
+                   }
+                   if (!isMerged) clusteredGates.push(pt1);
+               });
+
+               clusteredGates.forEach((pt, idx) => {
+                  features.push({
+                    id: `osm-gate-auto-${Date.now()}-${idx}`,
+                    type: 'GATE',
+                    name: `Cổng AI ${idx + 1}`,
+                    latLng: { lat: pt[0], lng: pt[1] }
+                  });
+               });
+            } catch(e) {
+               console.warn("Lỗi tính giao điểm Cổng AI", e);
+            }
+          }
         }
       } catch (e) {
         console.warn("Lỗi parse boundary", e);
@@ -210,14 +254,21 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
         return features.filter(f => {
           try {
             if (f.type === 'GATE') {
-              const pt = turf.point([f.latLng[1], f.latLng[0]]); // [lng, lat]
+              // latLng là object {lat, lng} hoặc mảng [lat, lng]
+              const lng = f.latLng.lng !== undefined ? f.latLng.lng : f.latLng[1];
+              const lat = f.latLng.lat !== undefined ? f.latLng.lat : f.latLng[0];
+              const pt = turf.point([lng, lat]);
+              // Dùng điểm giao cắt nên nó nằm trên ranh giới, mặc định Turf tính là In
               return turf.booleanPointInPolygon(pt, boundaryPolygon);
             } else {
               // Với đường/nhà, lấy 1 điểm đại diện hoặc tâm để test
               const pt = turf.point([f.path[0][1], f.path[0][0]]); // [lng, lat]
               return turf.booleanPointInPolygon(pt, boundaryPolygon);
             }
-          } catch(e) { return false; }
+          } catch(e) { 
+            console.warn("Lọc lỗi:", e);
+            return false; 
+          }
         });
       }
     }

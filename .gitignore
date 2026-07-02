@@ -1,0 +1,6 @@
+node_modules/
+port_database_*.json
+port_data*.json
+*.jpg
+*.png
+*.pdf
