@@ -1,6 +1,6 @@
 <main>
     <!-- BẢN ĐỒ REACT MỚI -->
-    <iframe src="http://localhost:5173" class="w-full h-full border-0" style="width: 100%; height: 100%; min-height: 100vh;"></iframe>
+    <iframe src="/map_app/index.html" class="w-full h-full border-0" style="width: 100%; height: 100%; min-height: 100vh;"></iframe>
     <!-- CODE CŨ (TẠM ẨN BẰNG TEMPLATE ĐỂ NGĂN SCRIPT CHẠY) -->
     <template id="old-digitizer">
 
@@ -110,10 +110,30 @@
         let mode = 'idle'; 
         let pins = []; 
         let rulerLine = []; 
-        let pixelToMeterRatio = null; 
+        window.pixelToMeterRatio = parseFloat(localStorage.getItem('stitch_pixelToMeterRatio')) || null;
+        let pixelToMeterRatio = window.pixelToMeterRatio; 
         let measurements = [];
-        let mapZones = [];
-        let yardGrid = [];
+        window.mapZones = JSON.parse(localStorage.getItem('stitch_mapZones')) || [];
+        window.yardGrid = JSON.parse(localStorage.getItem('stitch_yardGrid')) || [];
+        let mapZones = window.mapZones;
+        let yardGrid = window.yardGrid;
+        
+        function saveStateToLocal() {
+            localStorage.setItem('stitch_mapZones', JSON.stringify(mapZones));
+            localStorage.setItem('stitch_yardGrid', JSON.stringify(yardGrid));
+            if (pixelToMeterRatio) localStorage.setItem('stitch_pixelToMeterRatio', pixelToMeterRatio);
+            window.mapZones = mapZones;
+            window.yardGrid = yardGrid;
+            window.pixelToMeterRatio = pixelToMeterRatio;
+        }
+        
+        window.reloadDigitizerFromGlobal = function() {
+            mapZones = window.mapZones || [];
+            yardGrid = window.yardGrid || [];
+            if (window.pixelToMeterRatio) pixelToMeterRatio = window.pixelToMeterRatio;
+            if (pixelToMeterRatio) ratioDisplay.textContent = `${pixelToMeterRatio.toFixed(2)} px/m`;
+        };
+        
         let currentRect = null; 
         let isDragging = false;
         
@@ -215,7 +235,7 @@
 
             mapZones.forEach(z => drawZone(z));
 
-            if (scale >= 1.5 && yardGrid.length > 0) {
+            if (yardGrid.length > 0) {
                 ctx.strokeStyle = 'rgba(78, 222, 163, 0.4)'; 
                 ctx.lineWidth = 1 / scale;
                 ctx.beginPath();
@@ -922,6 +942,7 @@
                         realHeightMeters: rect.height / pixelToMeterRatio
                     };
                     mapZones.push(zone);
+                    saveStateToLocal();
                     setTimeout(() => generateGrid(zone), 200);
                 });
                 alert(`OpenCV Computer Vision Detected ${zones.length} container blocks!`);
@@ -959,8 +980,9 @@
         undoBtn.addEventListener('click', () => {
             const last = mapZones.pop();
             if(last && last.type === 'Storage') yardGrid = yardGrid.filter(s => s.zoneId !== last.id);
+            saveStateToLocal();
         });
-        clearBtn.addEventListener('click', () => { mapZones = []; yardGrid = []; });
+        clearBtn.addEventListener('click', () => { mapZones = []; yardGrid = []; saveStateToLocal(); });
 
         function saveZone() {
             let x = currentRect.width < 0 ? currentRect.startX + currentRect.width : currentRect.startX;
@@ -981,6 +1003,7 @@
             };
             
             mapZones.push(zone);
+            saveStateToLocal();
             if (zone.type === 'Storage') {
                 setTimeout(() => generateGrid(zone), 200);
             }
@@ -1036,6 +1059,7 @@
                     });
                 }
             }
+            saveStateToLocal();
         }
         
         aiDetectBtn.addEventListener('click', async () => {
@@ -1057,7 +1081,7 @@
             cvWorker.postMessage({ type: 'AUTO_ZONE', imageData: imgData, ratio: pixelToMeterRatio, id: Date.now() });
         });
 
-        exportBtn.addEventListener('click', () => {
+        exportBtn.addEventListener('click', async () => {
             const payload = {
                 metadata: { pixelToMeterRatio, generatedAt: new Date().toISOString() },
                 zones: mapZones.map(z => ({
@@ -1071,6 +1095,27 @@
                 }))
             };
             exportOut.value = JSON.stringify(payload, null, 2);
+            
+            if (window.supabaseClient && window.currentUser) {
+                try {
+                    exportBtn.innerText = 'Saving...';
+                    const { error } = await window.supabaseClient
+                        .from('portMaps')
+                        .upsert({ 
+                            id: window.currentUser.id + '_vanilla', 
+                            data: { mapZones: window.mapZones, yardGrid: window.yardGrid } 
+                        });
+                    if (error) throw error;
+                    alert('Đã đồng bộ lên Supabase thành công!');
+                } catch(e) {
+                    console.error(e);
+                    alert('Lỗi khi lưu lên Supabase: ' + e.message);
+                } finally {
+                    exportBtn.innerText = 'Export to Database';
+                }
+            } else {
+                alert('Vui lòng đăng nhập ở thanh điều hướng để lưu lên Supabase!');
+            }
         });
 
         // Start Loop

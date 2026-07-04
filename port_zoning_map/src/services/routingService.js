@@ -75,7 +75,7 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
         const wx = coords[i+1][0];
         const wy = coords[i+1][1];
         
-        const l2 = (wx - vx)**2 + (wy - wy)**2;
+        const l2 = (wx - vx)**2 + (wy - vy)**2;
         let t = 0;
         if (l2 > 0) {
           t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
@@ -181,23 +181,36 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     }
   });
 
-  slots.forEach(slot => {
-    const lat = slot.path.reduce((sum, p) => sum + p[0], 0) / slot.path.length;
-    const lng = slot.path.reduce((sum, p) => sum + p[1], 0) / slot.path.length;
-    const node = { id: slot.id, coordinates: [lat, lng], type: 'SLOT', edges: [] };
-    graph.set(slot.id, node);
-    
-    const snap = snapToRoad([lat, lng], 2000, slot.id);
-    if (snap) {
-      const snapNodeId = `snap-${slot.id}`;
-      const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
-      graph.set(snapNodeId, snapNode);
+  let totalSlotsCount = 0;
+
+  storageZones.forEach(zone => {
+    if (!zone.slots || zone.slots.length === 0) return;
+    if (zone.zoneType === 'ROAD' || zone.zoneType === 'ROAD_LINE') return;
+
+    totalSlotsCount += zone.slots.length;
+
+    // Tính điểm truy cập (SNAP) trên đường cho TỪNG slot riêng biệt
+    // Điều này giúp xe tải đi vào sâu nhất có thể trên đường xương cá đến điểm gần container nhất
+    zone.slots.forEach(slot => {
+      const lat = slot.path.reduce((sum, p) => sum + p[0], 0) / slot.path.length;
+      const lng = slot.path.reduce((sum, p) => sum + p[1], 0) / slot.path.length;
+      const node = { id: slot.id, coordinates: [lat, lng], type: 'SLOT', edges: [] };
+      graph.set(slot.id, node);
       
-      node.edges.push({ to: snapNodeId, distance: snap.distance });
-      snapNode.edges.push({ to: slot.id, distance: snap.distance });
-      
-      roadLineSegmentsMap.get(snap.roadLineId)[snap.segmentIndex].push({ node: snapNode, t: snap.t });
-    }
+      const snap = snapToRoad([lat, lng], 2000, zone.id);
+      if (snap) {
+        const snapNodeId = `snap-slot-${slot.id}`;
+        // Nếu đã có snap node ở vị trí này (cùng t) thì có thể tái sử dụng, 
+        // nhưng để đơn giản ta cứ tạo node mới, Dijkstra vẫn xử lý tốt trọng số 0
+        const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
+        graph.set(snapNodeId, snapNode);
+        
+        node.edges.push({ to: snapNodeId, distance: snap.distance });
+        snapNode.edges.push({ to: slot.id, distance: snap.distance });
+        
+        roadLineSegmentsMap.get(snap.roadLineId)[snap.segmentIndex].push({ node: snapNode, t: snap.t });
+      }
+    });
   });
 
   for (const segments of roadLineSegmentsMap.values()) {
@@ -215,7 +228,7 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     }
   }
 
-  console.log(`[A* Centerline] Graph built: ${graph.size} total nodes, ${slots.length} slots, ${gates.length} gates.`);
+  console.log(`[A* Hierarchical] Graph built: ${graph.size} nodes, ${totalSlotsCount} slots nested in zones, ${gates.length} gates.`);
   pathCache.clear(); 
   precomputeAllPaths(graph, gates);
   return graph;
@@ -345,32 +358,63 @@ const precomputeAllPaths = (graph, gates) => {
 
 export const findShortestPath = (startNodeId, targetNodeId, graph) => {
   if (!graph.has(startNodeId) || !graph.has(targetNodeId)) return [];
+
+  const processPathArray = (nodeIds) => {
+     let finalIds = [...nodeIds];
+     
+     // Truck shouldn't drive into the slot, just wait on the road outside
+     const targetId = finalIds[finalIds.length - 1];
+     const targetNode = graph.get(targetId);
+     if (targetNode && targetNode.type === 'SLOT') {
+         if (finalIds.length >= 3) {
+             const last = graph.get(finalIds[finalIds.length - 1]);
+             const prev = graph.get(finalIds[finalIds.length - 2]);
+             if (last && last.type === 'SLOT' && prev && prev.type === 'SNAP') {
+                 finalIds.pop(); // Remove the SLOT node, keeping the truck at the SNAP node on the road
+             }
+         }
+     }
+     
+     const startId = finalIds[0];
+     const startNode = graph.get(startId);
+     if (startNode && startNode.type === 'SLOT') {
+         if (finalIds.length >= 3) {
+             const first = graph.get(finalIds[0]);
+             const second = graph.get(finalIds[1]);
+             if (first && first.type === 'SLOT' && second && second.type === 'SNAP') {
+                 finalIds.shift(); // Remove the SLOT node, keeping the truck at the SNAP node on the road
+             }
+         }
+     }
+     
+     return finalIds.map(id => graph.get(id).coordinates);
+  };
   
   // KIỂM TRA SSSP CACHE TRƯỚC (Thời gian: O(L) ~ 0.001ms)
   if (ssspCameFromCache.has(startNodeId)) {
       const cameFrom = ssspCameFromCache.get(startNodeId);
       if (cameFrom.has(targetNodeId)) {
-          const path = [];
+          const nodePath = [];
           let curr = targetNodeId;
           while (cameFrom.has(curr)) {
-            path.unshift(graph.get(curr).coordinates);
+            nodePath.unshift(curr);
             curr = cameFrom.get(curr);
           }
-          path.unshift(graph.get(startNodeId).coordinates);
-          return path;
+          nodePath.unshift(startNodeId);
+          return processPathArray(nodePath);
       }
   } else if (ssspCameFromCache.has(targetNodeId)) {
       // Trường hợp ngược lại (Slot -> Gate)
       const cameFrom = ssspCameFromCache.get(targetNodeId);
       if (cameFrom.has(startNodeId)) {
-          const path = [];
+          const nodePath = [];
           let curr = startNodeId;
           while (cameFrom.has(curr)) {
-            path.unshift(graph.get(curr).coordinates);
+            nodePath.unshift(curr);
             curr = cameFrom.get(curr);
           }
-          path.unshift(graph.get(targetNodeId).coordinates);
-          return path.reverse();
+          nodePath.unshift(targetNodeId);
+          return processPathArray(nodePath.reverse());
       }
   }
 
@@ -398,15 +442,17 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
     if (minObj.score > (fScore.get(current) || Infinity)) continue;
     
     if (current === targetNodeId) {
-      const path = [];
+      const nodePath = [];
       let curr = current;
       while (cameFrom.has(curr)) {
-        path.unshift(graph.get(curr).coordinates);
+        nodePath.unshift(curr);
         curr = cameFrom.get(curr);
       }
-      path.unshift(graph.get(startNodeId).coordinates);
-      pathCache.set(cacheKey, path);
-      return [...path];
+      nodePath.unshift(startNodeId);
+      
+      const finalCoords = processPathArray(nodePath);
+      pathCache.set(cacheKey, finalCoords);
+      return [...finalCoords];
     }
     
     const currentNode = graph.get(current);

@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import * as turf from '@turf/turf';
-import { 
-  MapContainer, 
-  TileLayer, 
-  Polygon, 
-  useMap, 
-  LayersControl, 
-  FeatureGroup, 
+import {
+  MapContainer,
+  TileLayer,
+  Polygon,
+  useMap,
+  LayersControl,
+  FeatureGroup,
   useMapEvents,
   Popup,
   Marker,
@@ -14,6 +14,7 @@ import {
   Tooltip,
   Polyline
 } from 'react-leaflet';
+import { assignZoneTags } from '../services/zoneTagging';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
@@ -21,6 +22,8 @@ import { generateGridWithTurf, createFlatBufferPolygon } from '../services/turfS
 import { fetchOSMFeatures } from '../services/osmService';
 import { buildGraph, findShortestPath } from '../services/routingService';
 import { saveMapData, loadMapData, logout, loadLocalCheData, syncCheData } from '../services/supabaseService';
+import { get, set, del } from 'idb-keyval';
+import CanvasSlotLayer from './CanvasSlotLayer';
 
 import L from 'leaflet';
 delete L.Icon.Default.prototype._getIconUrl;
@@ -82,12 +85,11 @@ const LayerTracker = ({ setActiveBaseLayer }) => {
 
 const ZoomTracker = ({ onZoomChange }) => {
   const map = useMapEvents({
-    zoomend() {
-      onZoomChange(map.getZoom());
-    }
+    zoomend() { onZoomChange(map.getZoom()); }
   });
   return null;
 };
+
 
 // Helper bóc tách ID
 const parseSlotId = (slotId) => {
@@ -308,7 +310,8 @@ const RotatedMarker = React.memo(({ id, position, icon, heading, progress }) => 
 
 const MemoizedStaticMapLayers = React.memo(({
   portBoundary, storageZones, getPolygonStyle, showLabels,
-  handleUpdateZone, handleGenerateGrid, handleAdjustPadding
+  handleUpdateZone, handleGenerateGrid, handleAdjustPadding,
+  isLightMap, handleCanvasSlotClick, currentZoom, slotCounts
 }) => {
   return (
     <>
@@ -316,17 +319,37 @@ const MemoizedStaticMapLayers = React.memo(({
         <GeoJSON key={JSON.stringify(portBoundary)} data={portBoundary} style={{ color: '#D50000', weight: 4, fillOpacity: 0.05, dashArray: '10, 10' }} />
       )}
       {storageZones.filter(z => z.zoneType !== 'ROAD' && z.zoneType !== 'ROAD_LINE').map(zone => (
-        <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
-          {(showLabels && zone.name && zone.name !== '') && (
-            <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
-              <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
-            </Tooltip>
+        <FeatureGroup key={`${zone.id}-${zone.zoneType}-${zone.subType}`}>
+          <Polygon positions={zone.path} pathOptions={getPolygonStyle(zone)}>
+            {(showLabels && zone.name && zone.name !== '') && (
+              <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
+                <div style={{ textAlign: 'center', lineHeight: '1.2' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name || 'Zone'}</span>
+                  {zone.zoneType !== 'GENERAL' && (
+                    <div style={{ fontSize: '9px', color: '#666' }}>
+                      [{zone.zoneType}{zone.subType ? `-${zone.subType}` : ''}]
+                    </div>
+                  )}
+                </div>
+              </Tooltip>
+            )}
+            <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
+          </Polygon>
+          {(zone.slots && zone.slots.length > 0 && currentZoom >= 17) && (
+            <CanvasSlotLayer 
+              slots={zone.slots}
+              isLightMap={isLightMap}
+              onSlotClick={handleCanvasSlotClick}
+              zoneType={zone.zoneType}
+              subType={zone.subType}
+              allowedCargo={zone.allowedCargo}
+              slotCounts={slotCounts}
+            />
           )}
-          <Popup><ZonePopupForm zone={zone} onSave={handleUpdateZone} onGenerateGrid={handleGenerateGrid} onAdjustPadding={handleAdjustPadding} /></Popup>
-        </Polygon>
+        </FeatureGroup>
       ))}
       {storageZones.filter(z => z.zoneType === 'ROAD').map(zone => (
-        <Polygon key={zone.id} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
+        <Polygon key={`${zone.id}-${zone.zoneType}`} positions={zone.path} pathOptions={getPolygonStyle(zone)}>
           {(showLabels && zone.name && zone.name !== '') && (
             <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
               <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name}</span>
@@ -336,7 +359,7 @@ const MemoizedStaticMapLayers = React.memo(({
         </Polygon>
       ))}
       {storageZones.filter(z => z.zoneType === 'ROAD_LINE').map(zone => (
-        <Polyline key={zone.id} positions={zone.path} color="#facc15" weight={6} dashArray="10, 10">
+        <Polyline key={`${zone.id}-${zone.zoneType}`} positions={zone.path} color="#facc15" weight={6} dashArray="10, 10">
           {showLabels && (
             <Tooltip permanent direction="center" className="zone-label" opacity={0.8}>
               <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{zone.name || 'Đường'} ({zone.id})</span>
@@ -349,78 +372,43 @@ const MemoizedStaticMapLayers = React.memo(({
   );
 });
 
-// Component render GeoJSON tốc độ cao với thuật toán Windowing (Culling off-screen)
-const SlotLayer = ({ slotGeoJSON, style, onEachFeature }) => {
-  const map = useMap();
-  const layerRef = useRef(null);
-  const geoJsonRef = useRef(slotGeoJSON);
-
-  // Sync ref and apply style updates without clearLayers()
-  useEffect(() => {
-     geoJsonRef.current = slotGeoJSON;
-     if (layerRef.current) {
-         layerRef.current.eachLayer(layer => {
-             const updatedFeature = slotGeoJSON.features.find(f => f.properties.id === layer.feature.properties.id);
-             if (updatedFeature) {
-                 layer.feature = updatedFeature;
-                 layer.setStyle(style(updatedFeature));
-             }
-         });
-     }
-  }, [slotGeoJSON, style]);
-
-  useEffect(() => {
-    if (!layerRef.current) {
-      layerRef.current = L.geoJSON(null, { style, onEachFeature }).addTo(map);
-    }
-
-    const updateVisible = () => {
-      if (map.getZoom() < 18) {
-          if (layerRef.current) layerRef.current.clearLayers();
-          return;
-      }
-      
-      const bounds = map.getBounds().pad(0.3);
-      if (!geoJsonRef.current) return;
-      
-      const visibleFeatures = geoJsonRef.current.features.filter(f => {
-         const coords = f.geometry.coordinates[0][0]; 
-         return bounds.contains(L.latLng(coords[1], coords[0]));
-      });
-      
-      if (layerRef.current) {
-        layerRef.current.clearLayers();
-        layerRef.current.addData({ type: 'FeatureCollection', features: visibleFeatures });
-      }
-    };
-
-    updateVisible();
-    map.on('moveend', updateVisible);
-    map.on('zoomend', updateVisible);
-
-    return () => {
-      map.off('moveend', updateVisible);
-      map.off('zoomend', updateVisible);
-      if (layerRef.current) {
-        map.removeLayer(layerRef.current);
-        layerRef.current = null;
-      }
-    };
-  }, [map, onEachFeature]);
-
-  return null;
-};
+// SlotLayer đã được thay thế bằng CanvasSlotLayer (raw HTML5 Canvas) để đạt hiệu năng 60fps
 const MapResizer = ({ isActive }) => { const map = useMap(); useEffect(() => { if (isActive) { setTimeout(() => map.invalidateSize(), 100); } }, [isActive, map]); return null; };
 
 const FreePortDigitizer = ({ user, isActive }) => {
   const mapRef = useRef(null);
   const [storageZones, setStorageZones] = useState([]);
+  const slots = useMemo(() => storageZones.flatMap(z => z.slots || []), [storageZones]);
   const [gates, setGates] = useState([]);
-  const [slots, setSlots] = useState([]);
   const [inventory, setInventory] = useState([]); 
+  
+  const slotCounts = useMemo(() => {
+    const counts = {};
+    inventory.forEach(c => {
+      const cBayNum = parseInt(c.bay, 10);
+      const row = c.row;
+      const zoneId = c.zoneId;
+
+      const pad = (n) => n.toString().padStart(2, '0');
+
+      if (c.size === 20) {
+         const id = `${zoneId}-${pad(cBayNum)}-${row}`;
+         counts[id] = (counts[id] || 0) + 1;
+      } else {
+         const id1 = `${zoneId}-${pad(cBayNum - 1)}-${row}`;
+         const id2 = `${zoneId}-${pad(cBayNum)}-${row}`;
+         const id3 = `${zoneId}-${pad(cBayNum + 1)}-${row}`;
+         counts[id1] = (counts[id1] || 0) + 1;
+         counts[id2] = (counts[id2] || 0) + 1;
+         counts[id3] = (counts[id3] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [inventory]);
+
   const [slotUpdateTick, setSlotUpdateTick] = useState(0);
   const [showLabels, setShowLabels] = useState(false);
-  const [currentZoom, setCurrentZoom] = useState(16);
+
   const [activeRoute, setActiveRoute] = useState([]);
   const [activeFleet, setActiveFleet] = useState([]);
   const fleetRef = useRef([]);
@@ -435,6 +423,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
   const [isSyncingChe, setIsSyncingChe] = useState(false);
+  const [isTagging, setIsTagging] = useState(false);
+  const [taggingStatus, setTaggingStatus] = useState('');
 
   // Khởi tạo CHE (Xe nâng) tự động ngay khi load xong bãi
   useEffect(() => {
@@ -479,7 +469,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
             console.warn("Chưa tạo bảng che_equipment trên Supabase:", dbErr);
             syncError = dbErr.message;
         }
-        
+
         const cheList = rawData.map(c => {
            const randomSlot = slots[Math.floor(Math.random() * slots.length)];
            const pos = randomSlot ? [
@@ -498,7 +488,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
         });
         cheRef.current = cheList;
         setActiveChe([...cheList]);
-        
+
         if (syncError) {
             alert(`Đã nạp ${cheList.length} xe nâng từ Local JSON!\n(Cảnh báo DB: ${syncError} - Sếp cần tạo bảng trên Supabase)`);
         } else {
@@ -507,76 +497,265 @@ const FreePortDigitizer = ({ user, isActive }) => {
      } catch (e) { alert("Lỗi đọc file: " + e.message); }
      setIsSyncingChe(false);
   };
+
   const [isSimulating, setIsSimulating] = useState(false);
-  
   const [portBoundary, setPortBoundary] = useState(null);
   const [activeBaseLayer, setActiveBaseLayer] = useState('Vệ Tinh (ESRI)');
+  const [currentZoom, setCurrentZoom] = useState(16);
   const [isSavingToDB, setIsSavingToDB] = useState(false);
-
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // Khôi phục dữ liệu từ LocalStorage hoặc DB
-  useEffect(() => {
-    const cached = localStorage.getItem('nexus_port_data_cache');
-    let hasCache = false;
-    if (cached) {
-      try {
-        const data = JSON.parse(cached);
-        if ((data.storageZones && data.storageZones.length > 0) || (data.slots && data.slots.length > 0) || data.portBoundary) {
-          setStorageZones(data.storageZones || []);
-          setSlots(data.slots || []);
-          setGates(data.gates || []);
-          setInventory(data.inventory || []);
-          setActiveRoute([]);
-          if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
-          hasCache = true;
-          setIsDataLoaded(true);
-        }
-      } catch(e) {}
+  const handleRunZoneTagging = async () => {
+    // Filter out zones with invalid or insufficient coordinates early
+    const validZonesForTagging = storageZones.filter(zone => {
+      const latLngCoords = zone.pathLatLngs || zone.path;
+      if (!latLngCoords || !Array.isArray(latLngCoords) || latLngCoords.length < 3) {
+        return false; // Not enough points for a potential polygon
+      }
+      return true;
+    });
+
+    if (validZonesForTagging.length === 0) {
+      alert("Vui lòng vẽ ít nhất một vùng hợp lệ (ít nhất 3 điểm) trước khi gán nhãn!");
+      return;
     }
 
-    if (!hasCache && user) {
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Supabase Fetch Timeout")), 3000));
+    setIsTagging(true);
+    setTaggingStatus("Đang phân tích và gán nhãn cho các vùng...");
+
+    try {
+      // Prepare data for tagging algorithm using only valid zones
+      const zones = validZonesForTagging
+        .filter(zone => !zone.zoneType || zone.zoneType === 'YARD' || zone.zoneType === 'GENERAL')
+        .map(zone => {
+          let latLngCoords = zone.pathLatLngs || zone.path;
+
+          // Convert to [lng, lat] format for Turf (handle both [lat, lng] arrays and {lat, lng} objects)
+          const lngLatCoords = latLngCoords.map(p => {
+            if (Array.isArray(p)) return [p[1], p[0]];
+            if (p && typeof p === 'object' && p.lng !== undefined && p.lat !== undefined) return [p.lng, p.lat];
+            return [0, 0]; // Fallback, shouldn't happen for valid data
+          });
+
+          // Ensure polygon is closed (first point = last point)
+          if (lngLatCoords.length > 0 &&
+              (lngLatCoords[0][0] !== lngLatCoords[lngLatCoords.length - 1][0] ||
+               lngLatCoords[0][1] !== lngLatCoords[lngLatCoords.length - 1][1])) {
+            lngLatCoords.push([lngLatCoords[0][0], lngLatCoords[0][1]]);
+          }
+
+          // Ensure we have at least 4 points for a valid polygon ring
+          if (lngLatCoords.length < 4) {
+            console.warn("Not enough points to create a valid polygon for zone:", zone.id);
+            return null; // Skip invalid polygons
+          }
+
+          return {
+            ...zone,
+            // Store original [lat, lng] format for Leaflet display and future use
+            pathLatLngs: latLngCoords,
+            // Add the Turf-compatible lngLatCoords for direct use in assignZoneTags
+            turfCoords: lngLatCoords
+          };
+        })
+        .filter(zone => zone !== null); // Remove null entries
+
+      const buildings = storageZones
+        .filter(zone => zone.zoneType === 'BUILDING')
+        .map(zone => {
+          let latLngCoords = zone.pathLatLngs || zone.path;
+          if (!latLngCoords || !Array.isArray(latLngCoords) || latLngCoords.length < 3) {
+            return null; // Skip if no coordinates or not enough points
+          }
+
+          const lngLatCoords = latLngCoords.map(p => {
+            if (Array.isArray(p)) return [p[1], p[0]];
+            if (p && typeof p === 'object' && p.lng !== undefined && p.lat !== undefined) return [p.lng, p.lat];
+            return [0, 0]; // Fallback
+          });
+
+          if (lngLatCoords.length > 0 &&
+              (lngLatCoords[0][0] !== lngLatCoords[lngLatCoords.length - 1][0] ||
+               lngLatCoords[0][1] !== lngLatCoords[lngLatCoords.length - 1][1])) {
+            lngLatCoords.push([lngLatCoords[0][0], lngLatCoords[0][1]]);
+          }
+
+          if (lngLatCoords.length < 4) {
+            console.warn("Not enough points to create a valid polygon for building:", zone.id);
+            return null; // Skip invalid polygons
+          }
+
+          return {
+            ...zone,
+            pathLatLngs: latLngCoords,
+            turfCoords: lngLatCoords
+          };
+        })
+        .filter(zone => zone !== null); // Remove null entries
+
+      const mainGate = gates.length > 0 ? gates[0] : null;
       
-      Promise.race([loadMapData(user.id || user.uid), timeoutPromise])
-      .then(data => {
-        if (data) {
-          setStorageZones(data.storageZones || []);
-          setSlots(data.slots || []);
-          setGates(data.gates || []);
-          setInventory(data.inventory || []);
-          setActiveRoute([]);
-          if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+      const taggedZones = assignZoneTags(zones, buildings, mainGate);
+
+      // Map back the tagged results to the full storageZones array
+      const newStorageZones = storageZones.map(origZone => {
+        const tagged = taggedZones.find(t => t.id === origZone.id);
+        if (tagged) {
+          // Tính toán isCovered cho từng slot riêng biệt nếu bãi này có chứa tòa nhà
+          let updatedSlots = origZone.slots;
+          if (origZone.slots && origZone.slots.length > 0) {
+            updatedSlots = origZone.slots.map(slot => {
+              // Create turf polygon for slot
+              let isCovered = false;
+              try {
+                const slotRing = [...slot.path.map(p => [p[1], p[0]]), [slot.path[0][1], slot.path[0][0]]];
+                const slotPoly = turf.polygon([slotRing]);
+                
+                isCovered = buildings.some(b => {
+                  try {
+                    const bPoly = turf.polygon([b.turfCoords]);
+                    const intersection = turf.intersect(turf.featureCollection([slotPoly, bPoly]));
+                    if (intersection) {
+                      const intArea = turf.area(intersection);
+                      const slotArea = turf.area(slotPoly);
+                      // Slot chỉ thành xám nếu trên 50% diện tích của nó nằm trong tòa nhà
+                      return (intArea / slotArea) > 0.5;
+                    }
+                    return false;
+                  } catch(e) {
+                    // Fallback to centroid point-in-polygon if intersection fails
+                    const slotLat = slot.path.reduce((sum, p) => sum + p[0], 0) / slot.path.length;
+                    const slotLng = slot.path.reduce((sum, p) => sum + p[1], 0) / slot.path.length;
+                    return turf.booleanPointInPolygon(turf.point([slotLng, slotLat]), turf.polygon([b.turfCoords]));
+                  }
+                });
+              } catch(e) {
+                isCovered = false;
+              }
+
+              return { ...slot, isCovered };
+            });
+          }
+
+          return {
+            ...origZone,
+            slots: updatedSlots,
+            zoneType: tagged.zoneType || origZone.zoneType,
+            subType: tagged.subType || origZone.subType,
+            allowedCargo: tagged.allowedCargo || origZone.allowedCargo,
+            taggingReason: tagged.taggingReason || origZone.taggingReason,
+            isVerified: true
+          };
         }
-        setIsDataLoaded(true);
-      }).catch(err => {
-        console.warn("Lỗi tải dữ liệu DB (Dùng fallback):", err.message);
-        setIsDataLoaded(true);
+        return origZone;
       });
-    } else if (!hasCache && !user) {
-      setTimeout(() => setIsDataLoaded(true), 1500);
+
+      setStorageZones(newStorageZones);
+      setTaggingStatus("Gán nhãn thành công!");
+      console.log("Tag thành công!", taggedZones);
+      setTimeout(() => setTaggingStatus(''), 3000);
+    } catch (error) {
+      console.error("Lỗi khi gán nhãn:", error);
+      alert("Đã xảy ra lỗi khi gán nhãn: " + error.message);
+      setTaggingStatus("Lỗi gán nhãn");
+    } finally {
+      setIsTagging(false);
     }
+  };
+
+  // Khôi phục dữ liệu từ DB (ưu tiên) hoặc IndexedDB
+  useEffect(() => {
+    const loadFromCache = async () => {
+      try {
+        const cached = await get('nexus_port_data_cache');
+        if (cached) {
+          const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+          if ((data.storageZones && data.storageZones.length > 0) || (data.slots && data.slots.length > 0) || data.portBoundary) {
+            const zones = data.storageZones || [];
+            const flatSlots = data.slots || [];
+            setStorageZones(zones.map(z => ({ ...z, slots: z.slots || flatSlots.filter(s => s.zoneId === z.id) })));
+            setGates(data.gates || []);
+            setInventory(data.inventory || []);
+            setActiveRoute([]);
+            if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+            setIsDataLoaded(true);
+            return true;
+          }
+        }
+      } catch(e) {
+         console.warn("Lỗi khi đọc IndexedDB:", e);
+      }
+      return false;
+    };
+
+    const initializeData = async () => {
+      if (user) {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Supabase Fetch Timeout")), 3000));
+        try {
+          const data = await Promise.race([loadMapData(user.id || user.uid), timeoutPromise]);
+          if (data && ((data.storageZones && data.storageZones.length > 0) || (data.slots && data.slots.length > 0) || data.portBoundary)) {
+            const zones = data.storageZones || [];
+            const flatSlots = data.slots || [];
+            setStorageZones(zones.map(z => ({ ...z, slots: z.slots || flatSlots.filter(s => s.zoneId === z.id) })));
+            setGates(data.gates || []);
+            setInventory(data.inventory || []);
+            setActiveRoute([]);
+            if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+            setIsDataLoaded(true);
+            await set('nexus_port_data_cache', {
+               storageZones: data.storageZones || [],
+               slots: data.slots || [],
+               gates: data.gates || [],
+               inventory: data.inventory || [],
+               activeRoute: [],
+               portBoundary: data.portBoundary
+            });
+          } else {
+            const loaded = await loadFromCache();
+            if (!loaded) setIsDataLoaded(true);
+          }
+        } catch (err) {
+          console.warn("Lỗi tải dữ liệu DB, dùng IndexedDB fallback:", err.message);
+          const loaded = await loadFromCache();
+          if (!loaded) {
+             window.__FETCH_ERROR_DO_NOT_SAVE = true;
+             setIsDataLoaded(true);
+          }
+        }
+      } else {
+        const loaded = await loadFromCache();
+        if (!loaded) {
+          setTimeout(() => setIsDataLoaded(true), 1500);
+        }
+      }
+    };
+
+    initializeData();
   }, [user]);
 
-  // Auto-save vào LocalStorage mỗi khi có thay đổi
+  // Auto-save vào IndexedDB mỗi khi có thay đổi
   useEffect(() => {
     if (!isDataLoaded) return;
-    try {
-      // Ép kiểu tọa độ còn 6 chữ số thập phân để giảm dung lượng file xuống 60%, tránh QuotaExceededError
-      const compactSlots = slots.map(s => ({
-         ...s,
-         path: s.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
-      }));
-      const compactZones = storageZones.map(z => ({
-         ...z,
-         path: z.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
-      }));
-      
-      const dataToCache = { storageZones: compactZones, slots: compactSlots, gates, inventory, portBoundary };
-      localStorage.setItem('nexus_port_data_cache', JSON.stringify(dataToCache));
-    } catch (error) {
-      console.warn("Không thể lưu cache (quá dung lượng):", error);
-    }
+    
+    const saveToIndexedDB = async () => {
+      try {
+        const compactSlots = slots.map(s => ({
+           ...s,
+           path: s.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
+        }));
+        const compactZones = storageZones.map(z => ({
+           ...z,
+           path: z.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
+        }));
+        
+        const dataToCache = { storageZones: compactZones, slots: compactSlots, gates, inventory, portBoundary };
+        await set('nexus_port_data_cache', dataToCache);
+      } catch (error) {
+        console.warn("Không thể lưu cache IndexedDB:", error);
+      }
+    };
+    
+    saveToIndexedDB();
   }, [storageZones, slots, gates, inventory, portBoundary, isDataLoaded]);
 
   // Báo cáo thay đổi lên Parent Window (SPA index.html)
@@ -585,6 +764,53 @@ const FreePortDigitizer = ({ user, isActive }) => {
       window.parent.postMessage({ type: 'SYNC_PORT_DATA', payload: { slots, inventory } }, '*');
     }
   }, [slots, inventory]);
+
+  // Lắng nghe lệnh từ Operations Hub
+  useEffect(() => {
+    const handleMasterSync = (event) => {
+      if (event.data && event.data.type === 'MASTER_SYNC_FLEET') {
+        const { fleet } = event.data.payload;
+        if (!fleet || !graphData) return;
+
+        import('../services/routingService').then(({ findShortestPath }) => {
+           const tempGraph = new Map(graphData);
+           const newFleet = [];
+           
+           fleet.forEach(v => {
+               // Chọn điểm đi/đến thực tế trên bản đồ
+               let startNodeId = gates.length > 0 ? gates[Math.floor(Math.random() * gates.length)].id : null;
+               let endNodeId = slots.length > 0 ? slots[Math.floor(Math.random() * slots.length)].id : null;
+               
+               if (startNodeId && endNodeId) {
+                  const path = findShortestPath(startNodeId, endNodeId, tempGraph);
+                  if (path && path.length > 0) {
+                      const estimatedIdx = Math.floor((v.progress / 100) * (path.length - 1)) || 0;
+                      newFleet.push({
+                          ...v,
+                          origin: startNodeId,
+                          destination: endNodeId,
+                          path: path,
+                          currentPos: [...path[estimatedIdx]],
+                          currentSegmentIdx: estimatedIdx,
+                          speed: v.type === 'truck' ? 0.00002 : 0.00001,
+                      });
+                  } else {
+                      newFleet.push(v);
+                  }
+               } else {
+                  newFleet.push(v);
+               }
+           });
+           
+           fleetRef.current = newFleet;
+           setActiveFleet([...newFleet]);
+        });
+      }
+    };
+    
+    window.addEventListener('message', handleMasterSync);
+    return () => window.removeEventListener('message', handleMasterSync);
+  }, [graphData, gates, slots]);
 
   // Fleet Animation Loop
   useEffect(() => {
@@ -740,7 +966,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
 
     const runSimulationLoop = async () => {
        try {
-          const response = await fetch('/dummy_traffic_data.json');
+          const response = await fetch('./dummy_traffic_data.json');
           const tasks = await response.json();
           if (!tasks || tasks.length === 0) return;
 
@@ -842,16 +1068,37 @@ const FreePortDigitizer = ({ user, isActive }) => {
   }, [isSimulating, graphData, gates, slots]);
 
   const handlePolygonComplete = useCallback((latLngs) => {
+    // Ensure we have at least 3 distinct points to form a valid polygon (will become 4 when closed)
+    if (latLngs.length < 3) {
+      alert("Vui lòng vẽ ít nhất 3 điểm để tạo thành một vùng hợp lệ!");
+      return;
+    }
+
+    // Ensure the polygon is closed (first point = last point)
+    let processedLatLngs = [...latLngs];
+    const first = latLngs[0];
+    const last = latLngs[latLngs.length - 1];
+    if (first.lat !== last.lat || first.lng !== last.lng) {
+      // If not closed, add the first point at the end to close it
+      processedLatLngs.push(first);
+    }
+
     const newZone = {
       id: `zone-${Date.now()}`,
-      path: latLngs.map(p => [p.lat, p.lng]),
-      pathLatLngs: latLngs,
+      path: processedLatLngs.map(p => [p.lat, p.lng]),
+      pathLatLngs: processedLatLngs,
       name: '', zoneType: 'GENERAL', isVerified: false
     };
     setStorageZones(prev => [...prev, newZone]);
   }, []);
 
   const handlePolylineComplete = useCallback((latLngs) => {
+    // Ensure we have at least 2 points for a polyline
+    if (latLngs.length < 2) {
+      console.warn("Not enough points to create a polyline");
+      return;
+    }
+
     const newZone = {
       id: `road-line-${Date.now()}`,
       path: latLngs.map(p => [p.lat, p.lng]),
@@ -859,27 +1106,31 @@ const FreePortDigitizer = ({ user, isActive }) => {
       name: '', zoneType: 'ROAD_LINE', isVerified: true
     };
     setStorageZones(prev => [...prev, newZone]);
-    
+
     // Auto-delete slots that overlap with the new road line
-    setSlots(prev => {
+    setStorageZones(prev => {
        const lineCoords = latLngs.map(p => [p.lng, p.lat]);
        if (lineCoords.length < 2) return prev;
-       
+
        const roadLine = turf.lineString(lineCoords);
        const roadBuffer = turf.buffer(roadLine, 2.5, { units: 'meters', steps: 4 });
        const bufferBbox = turf.bbox(roadBuffer);
-       
-       return prev.filter(slot => {
-          // Fast bbox rejection using center point (approximate)
-          const sLng = slot.path[0][1];
-          const sLat = slot.path[0][0];
-          if (sLng < bufferBbox[0] - 0.0001 || sLng > bufferBbox[2] + 0.0001 || sLat < bufferBbox[1] - 0.0001 || sLat > bufferBbox[3] + 0.0001) return true;
 
-          const sPath = slot.path.map(p => [p[1], p[0]]);
-          sPath.push([...sPath[0]]);
-          const slotPoly = turf.polygon([sPath]);
-          
-          return !turf.booleanIntersects(slotPoly, roadBuffer);
+       return prev.map(zone => {
+          if (!zone.slots || zone.slots.length === 0) return zone;
+          const filteredSlots = zone.slots.filter(slot => {
+             // Fast bbox rejection using center point (approximate)
+             const sLng = slot.path[0][1];
+             const sLat = slot.path[0][0];
+             if (sLng < bufferBbox[0] - 0.0001 || sLng > bufferBbox[2] + 0.0001 || sLat < bufferBbox[1] - 0.0001 || sLat > bufferBbox[3] + 0.0001) return true;
+
+             const sPath = slot.path.map(p => [p[1], p[0]]);
+             sPath.push([...sPath[0]]);
+             const slotPoly = turf.polygon([sPath]);
+
+             return !turf.booleanIntersects(slotPoly, roadBuffer);
+          });
+          return { ...zone, slots: filteredSlots };
        });
     });
   }, []);
@@ -926,15 +1177,13 @@ const FreePortDigitizer = ({ user, isActive }) => {
 
     const { slots: newSlots, metadata } = generateGridWithTurf(latLngs, zoneId, zoneName, obstacles, customBearing);
     
-    // Lưu lại bearing vào zone metadata để slider hiển thị đúng
-    setStorageZones(prev => prev.map(z => z.id === zoneId ? { ...z, bearing: metadata.bearing } : z));
-    
-    setSlots(prev => {
-       const others = prev.filter(s => s.zoneId !== zoneId);
+    // Update storageZones with the new slots and bearing
+    setStorageZones(prev => {
+       const othersSlots = prev.filter(z => z.id !== zoneId).flatMap(z => z.slots || []);
        
        // Dùng thuật toán Grid Spatial Hashing O(N) kết hợp Turf để chống đứng máy khi có hàng vạn Slot
        const gridHash = new Map();
-       others.forEach(s => {
+       othersSlots.forEach(s => {
           const sLat = (s.path[0][0] + s.path[2][0]) / 2;
           const sLng = (s.path[0][1] + s.path[2][1]) / 2;
           const cellX = Math.floor(sLat / 0.0002);
@@ -970,7 +1219,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
           return !nearbyPolys.some(poly => turf.booleanIntersects(nsPoly, poly));
        });
        
-       return [...others, ...deduplicatedNewSlots];
+       return prev.map(z => z.id === zoneId ? { ...z, bearing: metadata.bearing, slots: deduplicatedNewSlots } : z);
     });
     
     setSlotUpdateTick(prev => prev + 1);
@@ -1043,7 +1292,13 @@ const FreePortDigitizer = ({ user, isActive }) => {
     if (!user) return;
     setIsSavingToDB(true);
     try {
-      await saveMapData(user.id, { storageZones, slots, gates, inventory, activeRoute, portBoundary });
+      const dataToSave = { storageZones, slots, gates, inventory, activeRoute, portBoundary };
+      await saveMapData(user.id, dataToSave);
+      try {
+          await set('nexus_port_data_cache', dataToSave);
+      } catch (cacheErr) {
+          console.warn("Không thể lưu cache IndexedDB:", cacheErr);
+      }
       alert("✅ Đã lưu toàn bộ bản đồ và kho hàng lên hệ thống (Supabase) thành công!");
     } catch (e) {
       console.error(e);
@@ -1056,6 +1311,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
   // Tự động lưu lên Cloud DB khi người dùng đóng tab hoặc chuyển trang
   useEffect(() => {
     const backupToDB = () => {
+      // Do not auto-save if there was a fetch error to prevent corrupting DB with empty state
+      if (window.__FETCH_ERROR_DO_NOT_SAVE) return;
       if (user && isDataLoaded) {
         saveMapData(user.id || user.uid, { storageZones, slots, gates, inventory, activeRoute, portBoundary })
           .catch(err => console.error("Lỗi Auto-save DB:", err));
@@ -1067,13 +1324,44 @@ const FreePortDigitizer = ({ user, isActive }) => {
     };
 
     window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('beforeunload', backupToDB);
 
     return () => {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('beforeunload', backupToDB);
     };
   }, [user, isDataLoaded, storageZones, slots, gates, inventory, activeRoute, portBoundary]);
+
+  const handleClearGrid = async () => {
+    if (window.confirm("⚠️ BẠN CÓ CHẮC MUỐN XÓA TOÀN BỘ CÁC LƯỚI CONTAINER VÀ CỔNG TRÊN BẢN ĐỒ?\n\nHành động này không thể hoàn tác!")) {
+      setStorageZones([]);
+      setGates([]);
+      setInventory([]);
+      setActiveRoute([]);
+      await del('nexus_port_data_cache');
+    }
+  };
+
+  const handleClearMap = async () => {
+    if (!window.confirm('Bạn có CHẮC CHẮN muốn xóa TRẮNG toàn bộ bản đồ và dữ liệu trên Cloud không? Hành động này KHÔNG THỂ HOÀN TÁC!')) return;
+    setStorageZones([]);
+    setGates([]);
+    setInventory([]);
+    setActiveRoute([]);
+    setPortBoundary(null);
+    localStorage.removeItem('nexus_port_data_cache');
+    if (user) {
+       try {
+           setIsSavingToDB(true);
+           await saveMapData(user.id, { storageZones: [], gates: [], inventory: [], activeRoute: [], portBoundary: null });
+           alert('✅ Đã xóa trắng bản đồ và cập nhật lên Cloud DB!');
+       } catch(e) {
+           alert('❌ Lỗi khi xóa Cloud DB: ' + e.message);
+       } finally {
+           setIsSavingToDB(false);
+       }
+    } else {
+       alert('✅ Đã xóa trắng bản đồ cục bộ!');
+    }
+  };
 
   const handleExportData = () => {
     const data = {
@@ -1084,6 +1372,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
       activeRoute,
       portBoundary
     };
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1102,9 +1391,12 @@ const FreePortDigitizer = ({ user, isActive }) => {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target.result);
-        if (data.storageZones) setStorageZones(data.storageZones);
+        if (data.storageZones) {
+           const zones = data.storageZones;
+           const flatSlots = data.slots || [];
+           setStorageZones(zones.map(z => ({ ...z, slots: z.slots || flatSlots.filter(s => s.zoneId === z.id) })));
+        }
         if (data.gates) setGates(data.gates);
-        if (data.slots) setSlots(data.slots);
         if (data.inventory) setInventory(data.inventory);
         if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
         alert('✅ Đã tải Database từ file JSON thành công!');
@@ -1158,10 +1450,11 @@ const FreePortDigitizer = ({ user, isActive }) => {
       if (fallbackSlot) slotLatLng = fallbackSlot.path[0];
     }
 
-    setSlots(prevSlots => {
-      let updatedSlots = [...prevSlots];
+    setStorageZones(prevZones => prevZones.map(zone => {
+      if (!zone.slots) return zone;
+      let updatedSlots = [...zone.slots];
       const parts = slotId.split('-');
-      if (parts.length < 3) return prevSlots;
+      if (parts.length < 3) return zone;
       
       const row = parts[parts.length - 1];
       const bay = parts[parts.length - 2];
@@ -1170,8 +1463,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
       
       if (containerType === '20ft') {
          if (bayNum % 2 === 0) {
-            alert(`Lỗi ISO: Không thể xếp cont 20ft vào Bay chẵn (${bayNum})!`);
-            return prevSlots;
+            // Note: Alert might trigger multiple times if we aren't careful, but bay checks should be localized.
+            return zone;
          }
          const targetIdx = updatedSlots.findIndex(s => s.id === slotId);
          if (targetIdx !== -1) {
@@ -1196,9 +1489,9 @@ const FreePortDigitizer = ({ user, isActive }) => {
             return s;
          });
       }
-      setSlotUpdateTick(prev => prev + 1);
-      return updatedSlots;
-    });
+      return { ...zone, slots: updatedSlots };
+    }));
+    setSlotUpdateTick(prev => prev + 1);
 
     // Cập nhật Inventory 3D cho Hover Panel
     const parsed = parseSlotId(slotId);
@@ -1222,9 +1515,18 @@ const FreePortDigitizer = ({ user, isActive }) => {
     if (slotLatLng && graphData) {
        const tempGraph = new Map(graphData);
        let startNodeId = null;
+       let nearestGate = null;
        
        // Tìm Gate gần nhất với Slot
        const allGates = Array.from(tempGraph.values()).filter(n => n.type === 'GATE');
+       if (allGates.length > 0) {
+          nearestGate = allGates.reduce((best, gate) => {
+             if (!best) return gate;
+             const bestDist = Math.pow(best.coordinates[0] - slotLatLng[0], 2) + Math.pow(best.coordinates[1] - slotLatLng[1], 2);
+             const gateDist = Math.pow(gate.coordinates[0] - slotLatLng[0], 2) + Math.pow(gate.coordinates[1] - slotLatLng[1], 2);
+             return gateDist < bestDist ? gate : best;
+          }, null);
+       }
        
        import('../services/routingService').then(({ findShortestPath }) => {
           const targetNodeId = slotId;
@@ -1236,7 +1538,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
                 return distA - distB;
              });
 
-              for (const gate of sortedGates) {
+             for (const gate of sortedGates) {
                  const path = findShortestPath(gate.id, targetNodeId, tempGraph);
                  if (path.length > 0) {
                     setActiveRoute(path);
@@ -1288,7 +1590,24 @@ const FreePortDigitizer = ({ user, isActive }) => {
                  }
               }
              
-             alert('Không có cổng nào có thể kết nối được tới vị trí container này (Đường đi bị đứt đoạn)!');
+             if (nearestGate) {
+                setActiveRoute([nearestGate.coordinates, slotLatLng]);
+                fleetRef.current.push({
+                   id: `AGV-${Math.floor(Math.random() * 9000 + 1000)}`,
+                   type: 'agv',
+                   origin: nearestGate.id,
+                   destination: targetNodeId,
+                   path: [nearestGate.coordinates, slotLatLng],
+                   progress: 0,
+                   status: 'moving',
+                   speed: 0.000015,
+                   currentSegmentIdx: 0,
+                   currentPos: [...nearestGate.coordinates]
+                });
+                alert('Không có đường graph đầy đủ, đã vẽ fallback tuyến thẳng từ cổng gần nhất.');
+             } else {
+                alert('Không có cổng nào có thể kết nối được tới vị trí container này (Đường đi bị đứt đoạn)!');
+             }
              
           } else {
              // Thử dùng điểm ROAD_CELL gần nhất
@@ -1317,7 +1636,22 @@ const FreePortDigitizer = ({ user, isActive }) => {
                       currentPos: [...path[0]]
                    });
                 }
-                else alert('Không tìm thấy đường đi khả thi!');
+                else {
+                   setActiveRoute([tempGraph.get(startNodeId).coordinates, slotLatLng]);
+                   fleetRef.current.push({
+                      id: `AGV-${Math.floor(Math.random() * 9000 + 1000)}`,
+                      type: 'agv',
+                      origin: startNodeId,
+                      destination: targetNodeId,
+                      path: [tempGraph.get(startNodeId).coordinates, slotLatLng],
+                      progress: 0,
+                      status: 'moving',
+                      speed: 0.000015,
+                      currentSegmentIdx: 0,
+                      currentPos: [...tempGraph.get(startNodeId).coordinates]
+                   });
+                   alert('Không tìm thấy graph route đầy đủ, đã dùng fallback tuyến thẳng.');
+                }
              } else {
                 alert('Chưa có Cổng (Gate) hoặc bãi Đường (ROAD) nào trên bản đồ để tìm đường!');
              }
@@ -1366,7 +1700,11 @@ const FreePortDigitizer = ({ user, isActive }) => {
     switch(zone.zoneType) {
       case 'BUILDING': return { color: '#000000', fillColor: '#424242', fillOpacity: 0.7, weight: 2 };
       case 'ROAD': return { color: '#757575', fillColor: '#9e9e9e', fillOpacity: 0.4, weight: 1, dashArray: '4,4' };
-      case 'YARD': return { color: '#388E3C', fillColor: '#A5D6A7', fillOpacity: 0.2, weight: 2 };
+      case 'CUSTOMS': return { color: '#8e24aa', fillColor: '#e1bee7', fillOpacity: 0.4, weight: 3, dashArray: '5, 5' };
+      case 'YARD': 
+        if (zone.subType === 'COVERED') return { color: '#616161', fillColor: '#9e9e9e', fillOpacity: 0.4, weight: 2, dashArray: '2, 6' };
+        if (zone.allowedCargo && zone.allowedCargo.includes('WOOD')) return { color: '#4e342e', fillColor: '#8d6e63', fillOpacity: 0.4, weight: 2 };
+        return { color: '#2e7d32', fillColor: '#81c784', fillOpacity: 0.4, weight: 2 };
       case 'DANGEROUS': return { color: '#c62828', fillColor: '#ffcccc', fillOpacity: 0.5, weight: 3 };
       case 'REEFER': return { color: '#1565c0', fillColor: '#cce5ff', fillOpacity: 0.5, weight: 3 };
       case 'METAL': return { color: '#424242', fillColor: '#e0e0e0', fillOpacity: 0.5, weight: 3 };
@@ -1378,81 +1716,10 @@ const FreePortDigitizer = ({ user, isActive }) => {
     }
   }, [isLightMap]);
 
-  const slotGeoJSON = useMemo(() => {
-    const emptyColor = isLightMap ? '#00695C' : '#00E676';
-    const occ20Color = '#f59e0b';
-    const occ40Color = '#ef4444';
-    const features = [];
-    const groups40ft = {};
-    slots.forEach(slot => {
-       if (slot.status === 'occupied_40' && slot.parent40ftId) {
-          if (!groups40ft[slot.parent40ftId]) groups40ft[slot.parent40ftId] = [];
-          groups40ft[slot.parent40ftId].push(slot);
-       }
-    });
-    Object.keys(groups40ft).forEach(parentId => {
-       const pair = groups40ft[parentId];
-       if (pair.length >= 1) {
-          try {
-             const pts = [];
-             pair.forEach(slot => {
-                slot.path.forEach(p => pts.push(turf.point([p[1], p[0]])));
-             });
-             const featureColl = turf.featureCollection(pts);
-             // Turf convex requires at least 3 points, which is satisfied by a single slot's 4 points
-             const hull = turf.convex(featureColl);
-             if (hull) {
-                features.push({
-                  type: 'Feature',
-                  properties: { id: parentId, status: 'occupied_40', color: '#b91c1c', fillColor: occ40Color, fillOpacity: 0.9, interactive: true },
-                  geometry: hull.geometry
-                });
-             }
-          } catch(e) { console.warn("Lỗi vẽ hull 40ft:", e); }
-       }
-    });
-    slots.forEach(slot => {
-      if (slot.status === 'occupied_40') return;
-      let fillColor = emptyColor, fillOpacity = 0.3, color = emptyColor, interactive = true;
-      if (slot.status === 'occupied_20') { fillColor = occ20Color; color = '#d97706'; fillOpacity = 0.9; }
-      const geoJsonPath = slot.path.map(p => [p[1], p[0]]);
-      geoJsonPath.push([...geoJsonPath[0]]);
-      features.push({
-        type: 'Feature',
-        properties: { id: slot.id, status: slot.status, color, fillColor, fillOpacity, interactive },
-        geometry: { type: 'Polygon', coordinates: [geoJsonPath] }
-      });
-    });
-    return { type: 'FeatureCollection', features };
-  }, [slots, isLightMap]);
-  const geoJsonStyle = useCallback((feature) => ({
-     color: feature.properties.color,
-     fillColor: feature.properties.fillColor,
-     weight: isLightMap ? 2 : 1,
-     fillOpacity: feature.properties.fillOpacity,
-     opacity: 0.8
-  }), [isLightMap]);
-
-  const geoJsonOnEachFeature = useCallback((feature, layer) => {
-    layer.on({
-      click: (e) => {
-         L.DomEvent.stopPropagation(e);
-         assignContainer(feature.properties.id, '40ft');
-      },
-      mouseover: (e) => {
-         window.dispatchEvent(new CustomEvent('slotHover', { detail: {
-           id: feature.properties.id,
-           type: feature.properties.status === 'occupied_40' ? '40ft/45ft' : (feature.properties.status === 'occupied_20' ? '20ft' : 'Trống'),
-           status: feature.properties.status
-         }}));
-         layer.setStyle({ fillOpacity: 1, weight: 3, color: '#ffffff' });
-      },
-      mouseout: (e) => {
-         window.dispatchEvent(new CustomEvent('slotHover', { detail: null }));
-         layer.setStyle({ fillOpacity: feature.properties.fillOpacity, weight: isLightMap ? 2 : 1, color: feature.properties.color });
-      }
-    });
-  }, [assignContainer, isLightMap]);
+  // Canvas slot click handler
+  const handleCanvasSlotClick = useCallback((slotId) => {
+    assignContainer(slotId, '40ft');
+  }, [assignContainer]);
 
 
   return (
@@ -1460,6 +1727,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
       <MapContainer preferCanvas={true} center={defaultCenter} zoom={16} maxZoom={22} ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 0 }}>
           <MapResizer isActive={isActive} />
         <ZoomTracker onZoomChange={setCurrentZoom} />
+
         <LayersControl position="bottomleft">
           <LayersControl.BaseLayer checked name="Vệ Tinh (ESRI)">
             <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxZoom={22} maxNativeZoom={19} />
@@ -1477,15 +1745,11 @@ const FreePortDigitizer = ({ user, isActive }) => {
                 handleUpdateZone={handleUpdateZone}
                 handleGenerateGrid={handleGenerateGrid}
                 handleAdjustPadding={handleAdjustPadding}
+                isLightMap={isLightMap}
+                handleCanvasSlotClick={handleCanvasSlotClick}
+                currentZoom={currentZoom}
+                slotCounts={slotCounts}
               />
-              {currentZoom >= 18 && slots.length > 0 && (
-                <SlotLayer 
-                  slotGeoJSON={slotGeoJSON} 
-                  style={geoJsonStyle}
-                  onEachFeature={geoJsonOnEachFeature}
-                  currentZoom={currentZoom}
-                />
-              )}
               {gates.map(gate => (
                 <Marker key={gate.id} position={gate.latLng}>
                   <Popup>Cổng ra vào: {gate.name}</Popup>
@@ -1502,7 +1766,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
               )}
               {/* Vẽ xe (Fleet) đang di chuyển */}
               {activeFleet.map(v => {
-                if (v.status !== 'moving') return null;
+                if (v.status !== 'moving' || !v.currentPos) return null;
                 return (
                   <RotatedMarker 
                      key={v.id} 
@@ -1579,24 +1843,40 @@ const FreePortDigitizer = ({ user, isActive }) => {
         </div>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
-          <button 
+          <button
             onClick={() => {
                if (gates.length === 0 || slots.length === 0) {
                   alert('Cần có ít nhất 1 Cổng (Gate) và 1 Bãi (Slot) để mô phỏng!');
                   return;
                }
                setIsSimulating(!isSimulating);
-            }} 
-            style={{ 
-               backgroundColor: isSimulating ? '#ef4444' : '#10b981', 
-               color: 'white', border: 'none', padding: '10px 16px', 
-               borderRadius: '8px', cursor: 'pointer', fontWeight: '600', 
+            }}
+            style={{
+               backgroundColor: isSimulating ? '#ef4444' : '#10b981',
+               color: 'white', border: 'none', padding: '10px 16px',
+               borderRadius: '8px', cursor: 'pointer', fontWeight: '600',
                transition: 'background-color 0.2s',
                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
             }}
           >
             {isSimulating ? '⏹ Dừng Mô Phỏng (Stop)' : '▶ Chạy Mô Phỏng (Auto Traffic)'}
           </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
+          <button
+            onClick={handleRunZoneTagging}
+            disabled={storageZones.length === 0}
+            style={{
+               backgroundColor: '#8b5cf6',
+               color: 'white', border: 'none', padding: '10px 16px',
+               borderRadius: '8px', cursor: 'pointer', fontWeight: '600',
+               transition: 'background-color 0.2s'
+            }}
+          >
+            {isTagging ? '⏳ Đang gán nhãn...' : '🏷️ Gán nhãn vùng'}
+          </button>
+          {isTagging && <div style={{ fontSize: '11px', color: '#8b5cf6', fontStyle: 'italic', textAlign: 'center' }}>{taggingStatus}</div>}
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
@@ -1620,11 +1900,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
           </div>
         )}
 
-        {slots.length > 0 && currentZoom < 18 && (
-          <div style={{ marginTop: '5px', padding: '8px', backgroundColor: '#fffbeb', color: '#b45309', borderRadius: '8px', fontSize: '12px', border: '1px solid #fde68a' }}>
-            ⚠️ <strong>Chế độ tối ưu hóa:</strong> Bạn đang ở góc nhìn xa. Lưới Container đã được ẩn đi để chống giật lag. Hãy <strong>Zoom sát vào bản đồ (Mức 18+)</strong> để xem chi tiết từng ô lưới.
-          </div>
-        )}
+
 
         {portBoundary && (
           <button onClick={() => setPortBoundary(null)} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
@@ -1633,9 +1909,12 @@ const FreePortDigitizer = ({ user, isActive }) => {
         )}
       </div>
 
-      <div style={{ position: 'absolute', top: 80, left: 20, zIndex: 1000, display: 'flex', gap: '10px' }}>
+      <div style={{ position: 'absolute', bottom: 30, left: 260, zIndex: 1000, display: 'flex', gap: '10px' }}>
         <button onClick={handleSaveToCloud} disabled={isSavingToDB} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
           {isSavingToDB ? '⏳ Đang lưu...' : '☁️ Lưu lên Cloud DB'}
+        </button>
+        <button onClick={handleClearMap} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          💥 Xóa trắng DB
         </button>
         <button onClick={handleExportData} style={{ backgroundColor: '#3B82F6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
           📥 Xuất Database (JSON)

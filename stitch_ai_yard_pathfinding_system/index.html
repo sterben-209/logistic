@@ -216,9 +216,23 @@
 <span class="material-symbols-outlined">terminal</span>
 </button>
 </div>
-<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30">
-<img alt="Administrator profile" class="w-full h-full object-cover" data-alt="Close up portrait of a logistics administrator in a high-tech control room, dramatic dark lighting with neon blue accents, sharp focus, corporate modern style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_FcpWwVHoEKYbbPlleo23dlpbwqD7o0TEoVxq61zR9q-VZLhjlZ95aA0FaoGJQfj8zpiIKsDPmjySqJE-s6gmyPZv9Co99s5x4mzp3gzu1vAiYJgWPrkT_lUGHsIsUol9O1u4a3-GzEe1w8LGVozfNRU_CB3MX9oW1gHUJblWjnbNiKvKAu_YJRKCtEvZ5SVqJHINuLmu0SzN-DNCMC0GcYz7WUT4AMwaKVjtj3kvfqNqgSXKcsVn72rCVynZO8qY_YId-Q82HsA"/>
+
+<div id="auth-container" class="flex items-center gap-4">
+    <button id="supabase-login-btn" class="bg-primary/20 text-primary border border-primary/50 px-4 py-1.5 rounded-lg font-semibold text-sm hover:bg-primary hover:text-on-primary transition-colors flex items-center gap-2">
+        <span class="material-symbols-outlined text-[18px]">login</span>
+        Connect / Login
+    </button>
+    <div id="user-profile" class="hidden items-center gap-3">
+        <span id="user-email" class="text-sm font-medium text-on-surface"></span>
+        <div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30">
+            <img id="user-avatar" alt="User profile" class="w-full h-full object-cover" src=""/>
+        </div>
+        <button id="supabase-logout-btn" class="text-outline-variant hover:text-error transition-colors" title="Sign out from Google">
+            <span class="material-symbols-outlined text-[20px]">logout</span>
+        </button>
+    </div>
 </div>
+
 </div>
 </header>
 <!-- SideNavBar -->
@@ -373,7 +387,7 @@
 </div>
 </div>
 <div class="h-6 w-px bg-outline-variant/50"></div>
-<button class="flex items-center gap-2 px-3 py-1.5 border border-primary/40 text-primary hover:bg-primary/10 rounded transition-colors text-sm font-label-sm">
+<button id="btn-sync-operations" class="flex items-center gap-2 px-3 py-1.5 border border-primary/40 text-primary hover:bg-primary/10 rounded transition-colors text-sm font-label-sm">
 <span class="material-symbols-outlined text-[16px]">sync</span>
                             Sync Real-time Data
                         </button>
@@ -1167,7 +1181,7 @@
 </div>
 <div id="view-digitizer" class="spa-view hidden w-full h-full flex flex-col">
     <!-- BẢN ĐỒ REACT MỚI -->
-    <iframe src="http://localhost:5173" class="w-full h-full border-0" style="width: 100%; height: 100%; min-height: 100vh;"></iframe>
+    <iframe src="/map_app/index.html" class="w-full h-full border-0" style="width: 100%; height: 100%; min-height: 100vh;"></iframe>
     <!-- CODE CŨ (TẠM ẨN BẰNG TEMPLATE ĐỂ NGĂN SCRIPT CHẠY) -->
     <template id="old-digitizer">
 
@@ -1277,10 +1291,30 @@
         let mode = 'idle'; 
         let pins = []; 
         let rulerLine = []; 
-        let pixelToMeterRatio = null; 
+        window.pixelToMeterRatio = parseFloat(localStorage.getItem('stitch_pixelToMeterRatio')) || null;
+        let pixelToMeterRatio = window.pixelToMeterRatio; 
         let measurements = [];
-        let mapZones = [];
-        let yardGrid = [];
+        window.mapZones = JSON.parse(localStorage.getItem('stitch_mapZones')) || [];
+        window.yardGrid = JSON.parse(localStorage.getItem('stitch_yardGrid')) || [];
+        let mapZones = window.mapZones;
+        let yardGrid = window.yardGrid;
+        
+        function saveStateToLocal() {
+            localStorage.setItem('stitch_mapZones', JSON.stringify(mapZones));
+            localStorage.setItem('stitch_yardGrid', JSON.stringify(yardGrid));
+            if (pixelToMeterRatio) localStorage.setItem('stitch_pixelToMeterRatio', pixelToMeterRatio);
+            window.mapZones = mapZones;
+            window.yardGrid = yardGrid;
+            window.pixelToMeterRatio = pixelToMeterRatio;
+        }
+        
+        window.reloadDigitizerFromGlobal = function() {
+            mapZones = window.mapZones || [];
+            yardGrid = window.yardGrid || [];
+            if (window.pixelToMeterRatio) pixelToMeterRatio = window.pixelToMeterRatio;
+            if (pixelToMeterRatio) ratioDisplay.textContent = `${pixelToMeterRatio.toFixed(2)} px/m`;
+        };
+        
         let currentRect = null; 
         let isDragging = false;
         
@@ -1382,7 +1416,7 @@
 
             mapZones.forEach(z => drawZone(z));
 
-            if (scale >= 1.5 && yardGrid.length > 0) {
+            if (yardGrid.length > 0) {
                 ctx.strokeStyle = 'rgba(78, 222, 163, 0.4)'; 
                 ctx.lineWidth = 1 / scale;
                 ctx.beginPath();
@@ -2089,6 +2123,7 @@
                         realHeightMeters: rect.height / pixelToMeterRatio
                     };
                     mapZones.push(zone);
+                    saveStateToLocal();
                     setTimeout(() => generateGrid(zone), 200);
                 });
                 alert(`OpenCV Computer Vision Detected ${zones.length} container blocks!`);
@@ -2126,8 +2161,9 @@
         undoBtn.addEventListener('click', () => {
             const last = mapZones.pop();
             if(last && last.type === 'Storage') yardGrid = yardGrid.filter(s => s.zoneId !== last.id);
+            saveStateToLocal();
         });
-        clearBtn.addEventListener('click', () => { mapZones = []; yardGrid = []; });
+        clearBtn.addEventListener('click', () => { mapZones = []; yardGrid = []; saveStateToLocal(); });
 
         function saveZone() {
             let x = currentRect.width < 0 ? currentRect.startX + currentRect.width : currentRect.startX;
@@ -2148,6 +2184,7 @@
             };
             
             mapZones.push(zone);
+            saveStateToLocal();
             if (zone.type === 'Storage') {
                 setTimeout(() => generateGrid(zone), 200);
             }
@@ -2203,6 +2240,7 @@
                     });
                 }
             }
+            saveStateToLocal();
         }
         
         aiDetectBtn.addEventListener('click', async () => {
@@ -2224,7 +2262,7 @@
             cvWorker.postMessage({ type: 'AUTO_ZONE', imageData: imgData, ratio: pixelToMeterRatio, id: Date.now() });
         });
 
-        exportBtn.addEventListener('click', () => {
+        exportBtn.addEventListener('click', async () => {
             const payload = {
                 metadata: { pixelToMeterRatio, generatedAt: new Date().toISOString() },
                 zones: mapZones.map(z => ({
@@ -2238,6 +2276,27 @@
                 }))
             };
             exportOut.value = JSON.stringify(payload, null, 2);
+            
+            if (window.supabaseClient && window.currentUser) {
+                try {
+                    exportBtn.innerText = 'Saving...';
+                    const { error } = await window.supabaseClient
+                        .from('portMaps')
+                        .upsert({ 
+                            id: window.currentUser.id + '_vanilla', 
+                            data: { mapZones: window.mapZones, yardGrid: window.yardGrid } 
+                        });
+                    if (error) throw error;
+                    alert('Đã đồng bộ lên Supabase thành công!');
+                } catch(e) {
+                    console.error(e);
+                    alert('Lỗi khi lưu lên Supabase: ' + e.message);
+                } finally {
+                    exportBtn.innerText = 'Export to Database';
+                }
+            } else {
+                alert('Vui lòng đăng nhập ở thanh điều hướng để lưu lên Supabase!');
+            }
         });
 
         // Start Loop
@@ -2249,16 +2308,17 @@
 </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
     .hover-hide-sidebar {
-        transform: translateX(calc(-100% + 15px)) !important;
+        transform: translateX(calc(-100% + 5px)) !important;
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
     .hover-hide-sidebar::after {
         content: '';
         position: absolute;
         top: 0;
-        right: -50px;
+        right: -55px;
         width: 50px;
         height: 100%;
     }
@@ -2304,7 +2364,6 @@
                 topnav.style.display = '';
                 topnav.classList.remove('hidden');
                 topnav.classList.add('hover-hide-topnav');
-                // Ensure topnav has full width since sidebar is hidden
                 topnav.classList.remove('w-[calc(100%-16rem)]');
                 topnav.classList.add('w-full');
             }
@@ -2348,6 +2407,45 @@
         let opsSearchQuery = '';
         let opsFilterValue = 'all';
         let opsSortValue = 'default';
+
+        function exportFleetJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentFleet));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "fleet_data.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+        window.exportFleetJSON = exportFleetJSON;
+
+        function importFleetJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedFleet = JSON.parse(e.target.result);
+                    if (Array.isArray(importedFleet)) {
+                        currentFleet = importedFleet;
+                        dispatchFleetToMap();
+                        if (activeTab === 'fleet') renderTable();
+                    }
+                } catch (err) {
+                    alert('Invalid JSON file');
+                }
+            };
+            reader.readAsText(file);
+        }
+        window.importFleetJSON = importFleetJSON;
+
+        function dispatchFleetToMap() {
+            const iframe = document.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'MASTER_SYNC_FLEET', payload: { fleet: currentFleet } }, '*');
+            }
+        }
+        window.dispatchFleetToMap = dispatchFleetToMap;
 
         const renderTable = () => {
             const tbody = document.getElementById('operations-table-body');
@@ -2396,8 +2494,24 @@
                 }
 
                 if (filteredInventory.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active containers found</td></tr>';
-                    return;
+                    // Auto-generate some mock containers based on currentSlots if inventory is empty
+                    if (currentSlots && currentSlots.length > 0) {
+                        const maxMock = Math.min(10, currentSlots.length);
+                        for(let i=0; i<maxMock; i++) {
+                            const slot = currentSlots[i];
+                            filteredInventory.push({
+                                containerNo: `MOCK-${Math.floor(1000 + Math.random()*9000)}`,
+                                size: Math.random() > 0.5 ? 40 : 20,
+                                bay: slot.bay || '01',
+                                row: slot.row || '01',
+                                tier: 1,
+                                zoneId: slot.zoneId || 'Zone-A'
+                            });
+                        }
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active containers found. Please draw map and add containers.</td></tr>';
+                        return;
+                    }
                 }
 
                 tbody.innerHTML = filteredInventory.map((c, index) => {
@@ -2434,7 +2548,20 @@
                     `;
                 }).join('');
             } else if (activeTab === 'fleet') {
-                title.textContent = 'Fleet & Dispatch Management';
+                title.innerHTML = `
+                    <div class="flex justify-between items-center w-full pr-4">
+                        <span>Fleet & Dispatch Management</span>
+                        <div class="flex gap-2">
+                            <button onclick="exportFleetJSON()" class="px-3 py-1 bg-surface-container hover:bg-surface-container-highest text-on-surface text-sm rounded-md border border-outline-variant/30 transition-colors flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[16px]">download</span> Export JSON
+                            </button>
+                            <button onclick="document.getElementById('import-fleet-input').click()" class="px-3 py-1 bg-primary/20 hover:bg-primary/30 text-primary text-sm rounded-md border border-primary/30 transition-colors flex items-center gap-1">
+                                <span class="material-symbols-outlined text-[16px]">upload</span> Import JSON
+                            </button>
+                            <input type="file" id="import-fleet-input" accept=".json" class="hidden" onchange="importFleetJSON(event)" />
+                        </div>
+                    </div>
+                `;
                 thead.innerHTML = `
                     <th class="data-grid-header w-12 text-center">#</th>
                     <th class="data-grid-header">Vehicle ID</th>
@@ -2458,8 +2585,23 @@
                 }
 
                 if (filteredFleet.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center p-4 text-outline-variant">No active fleet vehicles</td></tr>';
-                    return;
+                    // Auto-generate mock fleet vehicles
+                    const mockFleetCount = 6;
+                    for (let i = 0; i < mockFleetCount; i++) {
+                        const isTruck = Math.random() > 0.5;
+                        currentFleet.push({
+                            id: (isTruck ? 'TRK-' : 'AGV-') + Math.floor(1000 + Math.random() * 9000),
+                            type: isTruck ? 'truck' : 'agv',
+                            origin: 'Gate-' + Math.floor(1 + Math.random() * 5),
+                            destination: 'Zone-' + String.fromCharCode(65 + Math.floor(Math.random() * 6)),
+                            progress: 0,
+                            status: 'moving'
+                        });
+                    }
+                    filteredFleet = [...currentFleet];
+                    if (typeof window.dispatchFleetToMap === 'function') {
+                        window.dispatchFleetToMap();
+                    }
                 }
 
                 tbody.innerHTML = filteredFleet.map((v, index) => {
@@ -2622,6 +2764,25 @@
 
         let currentInventory = [];
 
+        document.getElementById('btn-sync-operations')?.addEventListener('click', () => {
+            if (window.yardGrid && window.yardGrid.length > 0) {
+                currentSlots = window.yardGrid.map(slot => ({
+                    id: slot.name || `${slot.zoneId}-X${Math.floor(slot.x)}-Y${Math.floor(slot.y)}`,
+                    zoneId: slot.zoneId,
+                    bay: slot.name ? (slot.name.split('-C')[1]?.split('-R')[0] || '01') : '01',
+                    row: slot.name ? (slot.name.split('-R')[1] || '01') : '01'
+                }));
+                currentInventory = []; 
+                renderTable();
+            }
+        });
+
+        document.querySelectorAll('a[onclick*="switchView(\'operations\')"]').forEach(el => {
+            el.addEventListener('click', () => {
+                document.getElementById('btn-sync-operations')?.click();
+            });
+        });
+
         window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'SYNC_PORT_DATA') {
                 const { slots, inventory } = event.data.payload;
@@ -2630,8 +2791,15 @@
                 renderTable();
             } else if (event.data && event.data.type === 'SYNC_FLEET_DATA') {
                 const { fleet } = event.data.payload;
-                if (fleet) {
-                    currentFleet = fleet;
+                if (fleet && fleet.length > 0) {
+                    // Update progress and status instead of overwriting
+                    fleet.forEach(updatedV => {
+                        const existingV = currentFleet.find(v => v.id === updatedV.id);
+                        if (existingV) {
+                            existingV.progress = updatedV.progress;
+                            existingV.status = updatedV.status;
+                        }
+                    });
                     if (activeTab === 'fleet') renderTable();
                 }
 
@@ -2666,6 +2834,107 @@
             }
         });
     });
+
+    // --- Supabase Integration ---
+    const SUPABASE_URL = 'https://digwvrfrvfcpcslbndrd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpZ3d2cmZydmZjcGNzbGJuZHJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTY4NDgsImV4cCI6MjA5ODI5Mjg0OH0.hBNkfpV8R3f0bgBli6SIEBPNYMe8Zb7vLT8iDt1Jyq4';
+    
+    window.supabaseClient = null;
+    window.currentUser = null;
+    try {
+        window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch(e) {
+        console.warn("Supabase load error");
+    }
+
+    const loginBtn = document.getElementById('supabase-login-btn');
+    const logoutBtn = document.getElementById('supabase-logout-btn');
+    const userProfile = document.getElementById('user-profile');
+    const userEmail = document.getElementById('user-email');
+    const userAvatar = document.getElementById('user-avatar');
+
+    async function handleGoogleLogin() {
+        if(!window.supabaseClient) return;
+        await window.supabaseClient.auth.signInWithOAuth({ provider: 'google' });
+    }
+
+    async function handleLogout() {
+        if(window.supabaseClient) await window.supabaseClient.auth.signOut();
+    }
+
+    async function fetchVanillaMapData(userId) {
+        if (!window.supabaseClient) return;
+        try {
+            const { data, error } = await window.supabaseClient
+                .from('portMaps')
+                .select('data')
+                .eq('id', userId + '_vanilla')
+                .single();
+            if (error) {
+                if (error.code !== 'PGRST116') console.error(error);
+                return;
+            }
+            if (data && data.data) {
+                if (window.mapZones && window.mapZones.length > 0) {
+                    if (!confirm("Tìm thấy bản sao lưu trên Supabase! Bạn có muốn tải về và ghi đè lên dữ liệu hiện tại trên màn hình không?")) {
+                        return; // User aborted
+                    }
+                }
+                if (data.data.metadata && data.data.metadata.pixelToMeterRatio) {
+                    window.pixelToMeterRatio = data.data.metadata.pixelToMeterRatio;
+                    localStorage.setItem('stitch_pixelToMeterRatio', window.pixelToMeterRatio);
+                }
+                if (data.data.mapZones) {
+                    window.mapZones = data.data.mapZones;
+                    localStorage.setItem('stitch_mapZones', JSON.stringify(window.mapZones));
+                }
+                if (data.data.yardGrid) {
+                    window.yardGrid = data.data.yardGrid;
+                    localStorage.setItem('stitch_yardGrid', JSON.stringify(window.yardGrid));
+                }
+                if (window.reloadDigitizerFromGlobal) {
+                    window.reloadDigitizerFromGlobal();
+                }
+                console.log("Loaded Vanilla map data from Supabase");
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function updateAuthUI(user) {
+        window.currentUser = user;
+        if (user) {
+            if(loginBtn) loginBtn.classList.add('hidden');
+            if(userProfile) {
+                userProfile.classList.remove('hidden');
+                userProfile.classList.add('flex');
+            }
+            if(userEmail) userEmail.textContent = user.email || 'User';
+            if(userAvatar) userAvatar.src = user.user_metadata?.avatar_url || 'https://lh3.googleusercontent.com/aida-public/AB6AXuA_FcpWwVHoEKYbbPlleo23dlpbwqD7o0TEoVxq61zR9q-VZLhjlZ95aA0FaoGJQfj8zpiIKsDPmjySqJE-s6gmyPZv9Co99s5x4mzp3gzu1vAiYJgWPrkT_lUGHsIsUol9O1u4a3-GzEe1w8LGVozfNRU_CB3MX9oW1gHUJblWjnbNiKvKAu_YJRKCtEvZ5SVqJHINuLmu0SzN-DNCMC0GcYz7WUT4AMwaKVjtj3kvfqNqgSXKcsVn72rCVynZO8qY_YId-Q82HsA';
+            
+            fetchVanillaMapData(user.id);
+        } else {
+            if(loginBtn) loginBtn.classList.remove('hidden');
+            if(userProfile) {
+                userProfile.classList.add('hidden');
+                userProfile.classList.remove('flex');
+            }
+        }
+    }
+
+    if(loginBtn) loginBtn.addEventListener('click', handleGoogleLogin);
+    if(logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
+    if (window.supabaseClient) {
+        window.supabaseClient.auth.getSession().then(({ data: { session } }) => {
+            updateAuthUI(session?.user);
+        });
+        window.supabaseClient.auth.onAuthStateChange((_event, session) => {
+            updateAuthUI(session?.user);
+        });
+    }
+    // --- End Supabase Integration ---
 </script>
 </body>
 </html>

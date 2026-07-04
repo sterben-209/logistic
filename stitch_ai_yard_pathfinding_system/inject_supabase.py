@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 filepath = r'D:\test everything\logistic\stitch_ai_yard_pathfinding_system\index.html'
 with open(filepath, 'r', encoding='utf-8') as f:
@@ -43,8 +43,8 @@ html = re.sub(
 supabase_js = '''
     // Supabase Authentication Logic
     // PLEASE REPLACE THESE WITH YOUR ACTUAL SUPABASE URL AND ANON KEY
-    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const SUPABASE_URL = 'https://digwvrfrvfcpcslbndrd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpZ3d2cmZydmZjcGNzbGJuZHJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTY4NDgsImV4cCI6MjA5ODI5Mjg0OH0.hBNkfpV8R3f0bgBli6SIEBPNYMe8Zb7vLT8iDt1Jyq4';
     
     let supabaseClient = null;
     try {

@@ -72,7 +72,7 @@ export const loadCheData = async () => {
 
 // Tải dữ liệu CHE cục bộ (Fallback)
 export const loadLocalCheData = async () => {
-   const response = await fetch('/dummy_che_data.json');
+   const response = await fetch('./dummy_che_data.json');
    const data = await response.json();
    return data;
 };
@@ -87,7 +87,7 @@ export const syncTruckData = async (truckList) => {
 
 // Tải dữ liệu Xe tải cục bộ (Fallback)
 export const loadLocalTruckData = async () => {
-   const response = await fetch('/dummy_vehicles.json');
+   const response = await fetch('./dummy_vehicles.json');
    const data = await response.json();
    return data;
 };

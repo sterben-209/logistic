@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Fullstack logistic system",
   "scripts": {
-    "dev": "concurrently \"npm run dev:stitch\" \"npm run dev:map\"",
+    "dev": "concurrently \"npm run dev:map\" \"npm run dev:stitch\"",
     "dev:stitch": "cd stitch_ai_yard_pathfinding_system && npm run dev",
-    "dev:map": "cd port_zoning_map && npm run dev"
+    "dev:map": "cd port_zoning_map && npm run dev",
+    "build:map": "cd port_zoning_map && npm run build"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

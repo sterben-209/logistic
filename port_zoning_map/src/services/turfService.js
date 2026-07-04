@@ -92,12 +92,9 @@ export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', 
       const corners = [tl, tr, bl, br];
       let isInsideZone = true;
       
-      // Đảm bảo cả 4 góc của slot đều NẰM TRONG bãi (không thò ra ngoài)
-      for (const corner of corners) {
-        if (!turf.booleanPointInPolygon(corner, polygon)) {
-          isInsideZone = false;
-          break;
-        }
+      // Chỉ cần tâm của slot nằm trong bãi để lấp đầy tốt hơn ở các mép (tránh trống chỗ viền)
+      if (!turf.booleanPointInPolygon(slotCenter, polygon)) {
+        isInsideZone = false;
       }
 
       if (isInsideZone) {

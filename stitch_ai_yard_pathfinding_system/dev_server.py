@@ -6,16 +6,67 @@ import subprocess
 
 PORT = 8080
 LAST_VERSION = int(time.time())
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+MAP_APP_DIR = os.path.join(PROJECT_ROOT, 'port_zoning_map')
+
+WATCH_EXTENSIONS = ('.html', '.py', '.css', '.js', '.jsx', '.json')
+
+def run_build(command, cwd, label, quiet=False):
+    kwargs = {
+        'cwd': cwd,
+        'shell': os.name == 'nt',
+    }
+    if quiet:
+        kwargs['stdout'] = subprocess.DEVNULL
+    result = subprocess.run(command, **kwargs)
+    if result.returncode != 0:
+        print(f"[ERROR] {label} failed with exit code {result.returncode}")
+    return result.returncode == 0
+
+def build_map_app():
+    print("[Build] Building React map app into /map_app...")
+    npm_cmd = 'npm.cmd' if os.name == 'nt' else 'npm'
+    return run_build([npm_cmd, 'run', 'build'], MAP_APP_DIR, 'React map build', quiet=False)
+
+def build_logistic_spa():
+    print("[Build] Building logistic SPA...")
+    return run_build(['python', 'build_spa.py'], BASE_DIR, 'Logistic SPA build')
+
+def build_all():
+    return build_map_app() and build_logistic_spa()
 
 def get_latest_mtime():
     mtime = 0
-    for root, dirs, files in os.walk('.'):
-        for f in files:
-            # Watch for html, py, css, js files
-            if f.endswith(('.html', '.py', '.css', '.js')) and f != 'index.html':
-                t = os.path.getmtime(os.path.join(root, f))
-                if t > mtime:
-                    mtime = t
+    watch_roots = [
+        BASE_DIR,
+        os.path.join(MAP_APP_DIR, 'src'),
+    ]
+    watch_files = [
+        os.path.join(MAP_APP_DIR, 'index.html'),
+        os.path.join(MAP_APP_DIR, 'package.json'),
+        os.path.join(MAP_APP_DIR, 'vite.config.js'),
+    ]
+
+    for watch_root in watch_roots:
+        if not os.path.exists(watch_root):
+            continue
+        for root, dirs, files in os.walk(watch_root):
+            dirs[:] = [d for d in dirs if d not in {'node_modules', 'dist', 'map_app', '.git'}]
+            for f in files:
+                if f == 'index.html' and root == BASE_DIR:
+                    continue
+                if f.endswith(WATCH_EXTENSIONS):
+                    t = os.path.getmtime(os.path.join(root, f))
+                    if t > mtime:
+                        mtime = t
+
+    for file_path in watch_files:
+        if os.path.exists(file_path):
+            t = os.path.getmtime(file_path)
+            if t > mtime:
+                mtime = t
+
     return mtime
 
 def watch_files():
@@ -25,11 +76,11 @@ def watch_files():
         time.sleep(1)
         current_mtime = get_latest_mtime()
         if current_mtime > last_mtime:
-            print(f"\n[🔄 Watcher] Detect changes in source files. Rebuilding SPA...")
-            subprocess.run(["python", "build_spa.py"], stdout=subprocess.DEVNULL)
+            print(f"\n[Watcher] Detected source changes. Rebuilding map + SPA...")
+            build_all()
             last_mtime = get_latest_mtime() # Update to post-build mtime
             LAST_VERSION = int(time.time())
-            print("[✅ Watcher] Build finished. Triggering browser reload...")
+            print("[Watcher] Build finished. Triggering browser reload...")
 
 class LiveReloadHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -70,9 +121,10 @@ class LiveReloadHandler(SimpleHTTPRequestHandler):
             super().copyfile(source, outputfile)
 
 def start_server():
+    os.chdir(BASE_DIR)
     server = HTTPServer(('127.0.0.1', PORT), LiveReloadHandler)
-    print(f"🚀 Dev Server with Live Reload running at: http://127.0.0.1:{PORT}")
-    print("👀 Watching for file changes (will auto-rebuild and auto-reload browser)...")
+    print(f"Dev Server with Live Reload running at: http://127.0.0.1:{PORT}")
+    print("Watching logistic + React map sources...")
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
@@ -81,8 +133,8 @@ def start_server():
         server.server_close()
 
 if __name__ == '__main__':
-    print("Building SPA initially...")
-    subprocess.run(["python", "build_spa.py"], stdout=subprocess.DEVNULL)
+    print("Building app initially...")
+    build_all()
     
     t1 = threading.Thread(target=watch_files, daemon=True)
     t1.start()
