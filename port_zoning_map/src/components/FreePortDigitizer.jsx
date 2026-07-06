@@ -24,6 +24,10 @@ import { buildGraph, findShortestPath } from '../services/routingService';
 import { saveMapData, loadMapData, logout, loadLocalCheData, syncCheData } from '../services/supabaseService';
 import { get, set, del } from 'idb-keyval';
 import CanvasSlotLayer from './CanvasSlotLayer';
+import TaskTab from './TaskTab';
+import useVehicleAnimation from '../hooks/useVehicleAnimation';
+import useRealtimeSync from '../hooks/useRealtimeSync';
+import useTaskStore from '../store/useTaskStore';
 
 import L from 'leaflet';
 delete L.Icon.Default.prototype._getIconUrl;
@@ -380,7 +384,51 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const [storageZones, setStorageZones] = useState([]);
   const slots = useMemo(() => storageZones.flatMap(z => z.slots || []), [storageZones]);
   const [gates, setGates] = useState([]);
-  const [inventory, setInventory] = useState([]); 
+  
+  const inventory = useTaskStore(state => state.inventory);
+  const setStoreInventory = useTaskStore(state => state.setInventory);
+  const setInventory = useCallback((newInv) => {
+      if (typeof newInv === 'function') {
+          setStoreInventory(newInv(useTaskStore.getState().inventory));
+      } else {
+          setStoreInventory(newInv);
+      }
+  }, [setStoreInventory]);
+
+  const [portBoundary, setPortBoundary] = useState(null);
+  
+  const setStoreSlots = useTaskStore(state => state.setSlots);
+  const setStoreGates = useTaskStore(state => state.setGates);
+  const setStoreStorageZones = useTaskStore(state => state.setStorageZones);
+  const setStorePortBoundary = useTaskStore(state => state.setPortBoundary);
+  const activeTasks = useTaskStore(state => state.tasks);
+
+  const broadcasters = useRealtimeSync(user?.id);
+  const setBroadcasters = useTaskStore(state => state.setBroadcasters);
+  
+  useEffect(() => {
+    if (broadcasters) {
+      setBroadcasters(broadcasters);
+    }
+  }, [broadcasters, setBroadcasters]);
+
+
+
+  useEffect(() => {
+    setStoreSlots(slots);
+  }, [slots, setStoreSlots]);
+
+  useEffect(() => {
+    setStoreGates(gates);
+  }, [gates, setStoreGates]);
+
+  useEffect(() => {
+    setStoreStorageZones(storageZones);
+  }, [storageZones, setStoreStorageZones]);
+
+  useEffect(() => {
+    setStorePortBoundary(portBoundary);
+  }, [portBoundary, setStorePortBoundary]);
   
   const slotCounts = useMemo(() => {
     const counts = {};
@@ -499,11 +547,25 @@ const FreePortDigitizer = ({ user, isActive }) => {
   };
 
   const [isSimulating, setIsSimulating] = useState(false);
-  const [portBoundary, setPortBoundary] = useState(null);
   const [activeBaseLayer, setActiveBaseLayer] = useState('Vệ Tinh (ESRI)');
   const [currentZoom, setCurrentZoom] = useState(16);
   const [isSavingToDB, setIsSavingToDB] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Lazy Backup (đẩy lên cloud mỗi 3 phút nếu có thay đổi)
+  const saveToCloudRef = useRef();
+  useEffect(() => {
+    saveToCloudRef.current = handleSaveToCloud;
+  });
+
+  useEffect(() => {
+    const backupInterval = setInterval(() => {
+      if (isDataLoaded && activeTasks.length === 0) {
+        if (saveToCloudRef.current) saveToCloudRef.current();
+      }
+    }, 180000); // 3 phút
+    return () => clearInterval(backupInterval);
+  }, [isDataLoaded, activeTasks.length]);
 
   const handleRunZoneTagging = async () => {
     // Filter out zones with invalid or insufficient coordinates early
@@ -1721,6 +1783,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
     assignContainer(slotId, '40ft');
   }, [assignContainer]);
 
+  useVehicleAnimation();
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', margin: 0, padding: 0 }}>
@@ -1756,7 +1819,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
                 </Marker>
               ))}
               
-              {/* Vẽ tuyến đường A* (A-Star) */}
+              {/* Vẽ tuyến đường A* (A-Star) tĩnh */}
               {activeRoute.length > 0 && (
                 <Polyline positions={activeRoute} color="#10b981" weight={6} opacity={0.8}>
                   <Tooltip permanent direction="top" className="route-label" opacity={0.9}>
@@ -1764,17 +1827,46 @@ const FreePortDigitizer = ({ user, isActive }) => {
                   </Tooltip>
                 </Polyline>
               )}
-              {/* Vẽ xe (Fleet) đang di chuyển */}
-              {activeFleet.map(v => {
-                if (v.status !== 'moving' || !v.currentPos) return null;
+              
+              {/* Vẽ đường đi dự kiến của các xe đang hoạt động */}
+              {activeTasks.map(task => {
+                if (!task.path || task.path.length === 0 || task.status === 'COMPLETED') return null;
+                return (
+                  <Polyline 
+                    key={`path-${task.id}`} 
+                    positions={task.path} 
+                    color={task.type === 'INBOUND' ? "#3b82f6" : "#f59e0b"} 
+                    weight={3} 
+                    opacity={0.4} 
+                    dashArray="5, 10" 
+                  />
+                );
+              })}
+              {/* Vẽ xe từ Task Store */}
+              {activeTasks.map(task => {
+                if (!task.path || task.currentIndex >= task.path.length) return null;
+                const currentPos = task.path[task.currentIndex];
+                let heading = 0;
+                if (task.currentIndex < task.path.length - 1) {
+                  const nextPos = task.path[task.currentIndex + 1];
+                  const dx = nextPos[1] - currentPos[1];
+                  const dy = nextPos[0] - currentPos[0];
+                  heading = (Math.atan2(dx, dy) * 180 / Math.PI);
+                } else if (task.currentIndex > 0) {
+                  const prevPos = task.path[task.currentIndex - 1];
+                  const dx = currentPos[1] - prevPos[1];
+                  const dy = currentPos[0] - prevPos[0];
+                  heading = (Math.atan2(dx, dy) * 180 / Math.PI);
+                }
+
                 return (
                   <RotatedMarker 
-                     key={v.id} 
-                     id={v.id}
-                     position={v.currentPos} 
-                     icon={v.type === 'truck' ? staticTruckIcon : staticAgvIcon} 
-                     heading={v.heading}
-                     progress={v.progress}
+                     key={task.id} 
+                     id={task.truckPlate}
+                     position={currentPos} 
+                     icon={staticTruckIcon} 
+                     heading={heading}
+                     progress={task.progress}
                   />
                 );
               })}
@@ -1797,135 +1889,66 @@ const FreePortDigitizer = ({ user, isActive }) => {
         <LayerTracker setActiveBaseLayer={setActiveBaseLayer} />
       </MapContainer>
       
-      <div style={{ position: 'absolute', top: 80, right: 20, zIndex: 1000, backgroundColor: 'rgba(255,255,255,0.95)', padding: 20, borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.15)', width: 320, fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div>
-          <h3 style={{ margin: '0 0 5px 0', fontSize: '1.25rem', color: '#1f2937' }}>Free Port Digitizer</h3>
-          <p style={{ margin: '0', fontSize: '0.85rem', color: '#6b7280' }}>Open Source Stack: Leaflet + Turf + OSM</p>
-        </div>
-
-        <div style={{ position: 'relative' }}>
-          <form onSubmit={handleExecuteSearch} style={{ display: 'flex', gap: '8px' }}>
-            <input type="text" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', outline: 'none', color: '#111827', backgroundColor: '#ffffff' }} placeholder="Tìm cảng (VD: Cát Lái)" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
-            <button type="submit" disabled={isSearching} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>{isSearching ? '...' : 'Tìm'}</button>
+      <div style={{ position: 'absolute', top: 20, left: 60, right: 60, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', backgroundColor: 'rgba(255,255,255,0.95)', padding: '12px 20px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+          <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#1f2937', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Free Port Digitizer</h3>
+          <form onSubmit={handleExecuteSearch} style={{ display: 'flex', gap: '8px', position: 'relative', width: '250px' }}>
+            <input type="text" style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', outline: 'none', color: '#111827', backgroundColor: '#ffffff', fontSize: '13px' }} placeholder="Tìm cảng (VD: Cát Lái)" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
+            <button type="submit" disabled={isSearching} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>{isSearching ? '...' : 'Tìm'}</button>
+            {predictions.length > 0 && (
+              <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', color: 'black', border: '1px solid #d1d5db', borderRadius: '8px', padding: 0, listStyle: 'none', maxHeight: '200px', overflowY: 'auto', zIndex: 20, marginTop: '4px' }}>
+                {predictions.map(pred => (
+                  <li key={pred.place_id} onClick={() => { 
+                    setSearchInput(pred.description); 
+                    setPredictions([]); 
+                    setTargetLocation(pred.location);
+                    if (pred.geojson && (pred.geojson.type === 'Polygon' || pred.geojson.type === 'MultiPolygon')) {
+                      setPortBoundary(pred.geojson);
+                    } else {
+                      setPortBoundary(null);
+                    }
+                  }} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'black', fontSize: '13px' }}>{pred.description}</li>
+                ))}
+              </ul>
+            )}
           </form>
-          {predictions.length > 0 && (
-            <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', color: 'black', border: '1px solid #d1d5db', borderRadius: '8px', padding: 0, listStyle: 'none', maxHeight: '200px', overflowY: 'auto', zIndex: 20 }}>
-              {predictions.map(pred => (
-                <li key={pred.place_id} onClick={() => { 
-                  setSearchInput(pred.description); 
-                  setPredictions([]); 
-                  setTargetLocation(pred.location);
-                  if (pred.geojson && (pred.geojson.type === 'Polygon' || pred.geojson.type === 'MultiPolygon')) {
-                    setPortBoundary(pred.geojson);
-                  } else {
-                    setPortBoundary(null);
-                  }
-                }} style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'black' }}>{pred.description}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <button onClick={handleAutoDetect} disabled={isDetecting} style={{ backgroundColor: '#8b5cf6', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', transition: 'background-color 0.2s', opacity: isDetecting ? 0.7 : 1 }}>
-            🤖 Dual-Source AI Detect
-          </button>
-          {aiStatus && <div style={{ fontSize: '11px', color: '#8b5cf6', fontStyle: 'italic', textAlign: 'center' }}>{aiStatus}</div>}
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
-          <button 
-            onClick={handleSyncChe}
-            disabled={isSyncingChe || slots.length === 0}
-            style={{ backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', transition: 'background-color 0.2s', opacity: (isSyncingChe || slots.length === 0) ? 0.7 : 1 }}>
-            {isSyncingChe ? '⏳ Đang đồng bộ...' : '🚜 Sync Phương tiện (CHE)'}
-          </button>
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
-          <button
-            onClick={() => {
-               if (gates.length === 0 || slots.length === 0) {
-                  alert('Cần có ít nhất 1 Cổng (Gate) và 1 Bãi (Slot) để mô phỏng!');
-                  return;
-               }
-               setIsSimulating(!isSimulating);
-            }}
-            style={{
-               backgroundColor: isSimulating ? '#ef4444' : '#10b981',
-               color: 'white', border: 'none', padding: '10px 16px',
-               borderRadius: '8px', cursor: 'pointer', fontWeight: '600',
-               transition: 'background-color 0.2s',
-               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
-            }}
-          >
-            {isSimulating ? '⏹ Dừng Mô Phỏng (Stop)' : '▶ Chạy Mô Phỏng (Auto Traffic)'}
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
-          <button
-            onClick={handleRunZoneTagging}
-            disabled={storageZones.length === 0}
-            style={{
-               backgroundColor: '#8b5cf6',
-               color: 'white', border: 'none', padding: '10px 16px',
-               borderRadius: '8px', cursor: 'pointer', fontWeight: '600',
-               transition: 'background-color 0.2s'
-            }}
-          >
-            {isTagging ? '⏳ Đang gán nhãn...' : '🏷️ Gán nhãn vùng'}
-          </button>
-          {isTagging && <div style={{ fontSize: '11px', color: '#8b5cf6', fontStyle: 'italic', textAlign: 'center' }}>{taggingStatus}</div>}
-        </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
-          <input type="checkbox" id="toggle-labels" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} style={{ cursor: 'pointer' }} />
-          <label htmlFor="toggle-labels" style={{ fontSize: '13px', color: '#4b5563', cursor: 'pointer', fontWeight: '500' }}>Hiển thị chữ (Tên bãi/Đường)</label>
-        </div>
-
-        {activeChe.length > 0 && (
-          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
-            <h4 style={{ margin: '0 0 8px 0', color: '#334155', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>Hoạt động Cẩu (CHE)</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
-              {activeChe.map(che => (
-                <div key={che.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', backgroundColor: che.status === 'idle' ? '#f1f5f9' : '#fffbeb', borderRadius: '4px', border: '1px solid', borderColor: che.status === 'idle' ? '#e2e8f0' : '#fde68a' }}>
-                   <span style={{ fontWeight: 'bold', color: '#475569' }}>{che.id} ({che.type === 'rtg' ? 'Cẩu bánh lốp' : 'Xe nâng'})</span>
-                   <span style={{ color: che.status === 'idle' ? '#64748b' : '#d97706', fontWeight: che.status !== 'idle' ? 'bold' : 'normal', fontSize: '11px' }}>
-                      {che.status === 'idle' ? 'Rảnh rỗi' : (che.status === 'moving_to_slot' ? 'Chạy tới Ô...' : `Đang gắp ${Math.round(che.handlingProgress)}%`)}
-                   </span>
-                </div>
-              ))}
-            </div>
+          
+          <div style={{ width: '1px', height: '24px', backgroundColor: '#e5e7eb', margin: '0 4px' }}></div>
+          
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={handleAutoDetect} disabled={isDetecting} style={{ backgroundColor: 'transparent', color: '#374151', border: '1px solid #d1d5db', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', opacity: isDetecting ? 0.5 : 1 }}>🤖 AI Detect</button>
+            <button onClick={handleRunZoneTagging} disabled={storageZones.length === 0} style={{ backgroundColor: 'transparent', color: '#374151', border: '1px solid #d1d5db', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', opacity: storageZones.length === 0 ? 0.5 : 1 }}>🏷️ Gán nhãn</button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#4b5563', cursor: 'pointer', fontWeight: '500' }}>
+              <input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} /> Hiện chữ
+            </label>
+            {portBoundary && (
+              <button onClick={() => setPortBoundary(null)} style={{ backgroundColor: '#fecaca', color: '#dc2626', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>❌ Xóa viền đỏ</button>
+            )}
           </div>
-        )}
+        </div>
 
-
-
-        {portBoundary && (
-          <button onClick={() => setPortBoundary(null)} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>
-            ❌ Xóa khung ranh giới đỏ (Nếu quá to)
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={handleSaveToCloud} disabled={isSavingToDB} style={{ backgroundColor: 'transparent', color: '#10b981', border: '1px solid #10b981', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+            {isSavingToDB ? '⏳...' : '☁️ Lưu DB'}
           </button>
-        )}
+          <button onClick={handleClearMap} style={{ backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+            💥 Xóa
+          </button>
+          <button onClick={handleExportData} style={{ backgroundColor: 'transparent', color: '#3b82f6', border: '1px solid #3b82f6', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+            📥 Xuất
+          </button>
+          <button onClick={() => document.getElementById('import-json').click()} style={{ backgroundColor: 'transparent', color: '#f59e0b', border: '1px solid #f59e0b', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+            📂 Tải
+          </button>
+        </div>
       </div>
+      
 
-      <div style={{ position: 'absolute', bottom: 30, left: 260, zIndex: 1000, display: 'flex', gap: '10px' }}>
-        <button onClick={handleSaveToCloud} disabled={isSavingToDB} style={{ backgroundColor: '#10B981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-          {isSavingToDB ? '⏳ Đang lưu...' : '☁️ Lưu lên Cloud DB'}
-        </button>
-        <button onClick={handleClearMap} style={{ backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-          💥 Xóa trắng DB
-        </button>
-        <button onClick={handleExportData} style={{ backgroundColor: '#3B82F6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-          📥 Xuất Database (JSON)
-        </button>
-        <button onClick={() => document.getElementById('import-json').click()} style={{ backgroundColor: '#F59E0B', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-          📂 Tải Database (JSON)
-        </button>
-        <input type="file" id="import-json" accept=".json" style={{ display: 'none' }} onChange={handleImportData} />
-      </div>
+
+      <input type="file" id="import-json" accept=".json" style={{ display: 'none' }} onChange={handleImportData} />
 
       <HoverInfoPanel inventory={inventory} />
+      <TaskTab />
     </div>
   );
 };

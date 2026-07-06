@@ -362,30 +362,7 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
   const processPathArray = (nodeIds) => {
      let finalIds = [...nodeIds];
      
-     // Truck shouldn't drive into the slot, just wait on the road outside
-     const targetId = finalIds[finalIds.length - 1];
-     const targetNode = graph.get(targetId);
-     if (targetNode && targetNode.type === 'SLOT') {
-         if (finalIds.length >= 3) {
-             const last = graph.get(finalIds[finalIds.length - 1]);
-             const prev = graph.get(finalIds[finalIds.length - 2]);
-             if (last && last.type === 'SLOT' && prev && prev.type === 'SNAP') {
-                 finalIds.pop(); // Remove the SLOT node, keeping the truck at the SNAP node on the road
-             }
-         }
-     }
-     
-     const startId = finalIds[0];
-     const startNode = graph.get(startId);
-     if (startNode && startNode.type === 'SLOT') {
-         if (finalIds.length >= 3) {
-             const first = graph.get(finalIds[0]);
-             const second = graph.get(finalIds[1]);
-             if (first && first.type === 'SLOT' && second && second.type === 'SNAP') {
-                 finalIds.shift(); // Remove the SLOT node, keeping the truck at the SNAP node on the road
-             }
-         }
-     }
+     // Keep all nodes so the vehicle goes all the way into the slot
      
      return finalIds.map(id => graph.get(id).coordinates);
   };

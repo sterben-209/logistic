@@ -28,7 +28,7 @@ const CanvasSlotLayer = ({ slots, isLightMap, onSlotClick, zoneType, subType, sl
 
     useEffect(() => {
         const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated');
-        canvas.style.pointerEvents = 'auto';
+        canvas.style.pointerEvents = 'none';
         canvas.style.zIndex = '500';
         canvasRef.current = canvas;
         map.getPanes().overlayPane.appendChild(canvas);
@@ -135,11 +135,19 @@ const CanvasSlotLayer = ({ slots, isLightMap, onSlotClick, zoneType, subType, sl
                 const count = slotCounts ? (slotCounts[slot.id] || 0) : 0;
                 
                 let opacity = 0.2;
+                let topContainerColor = null;
+                
                 if (count > 0) {
                   opacity = Math.min(0.4 + (count - 1) * 0.2, 1.0);
+                  
+                  // If we want to color code based on top container type, we would need the inventory.
+                  // For now, we just indicate occupancy via opacity, and perhaps a tint if count >= 3
+                  if (count >= 3) {
+                      // Fully occupied or nearly full slots are red-tinted or darker
+                  }
                 }
                 
-                const slotColor = getBaseColor(slot);
+                const slotColor = topContainerColor || getBaseColor(slot);
 
                 if (isHovered) {
                     hoveredData.push({ pts, len, opacity, color: slotColor });
