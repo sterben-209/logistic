@@ -1500,9 +1500,26 @@ const FreePortDigitizer = ({ user, isActive }) => {
             const idleVehicles = fleetRegistry.filter(v => v.status === 'IDLE');
             if (idleVehicles.length === 0) return; // Wait for available vehicle
             
-            const vehicle = idleVehicles[0]; // Can be optimized for closest vehicle
+            // Find closest idle vehicle to target slot
+            let targetCoords = tempGraph.get(task.targetSlotId)?.coordinates;
+            let bestVehicle = null;
+            let minDistanceToTarget = Infinity;
             
-            // Find closest graph node to vehicle current position
+            if (targetCoords) {
+                for (const v of idleVehicles) {
+                    if (!v.currentPos) continue;
+                    const distToTarget = Math.pow(targetCoords[0] - v.currentPos[0], 2) + Math.pow(targetCoords[1] - v.currentPos[1], 2);
+                    if (distToTarget < minDistanceToTarget) {
+                        minDistanceToTarget = distToTarget;
+                        bestVehicle = v;
+                    }
+                }
+            }
+            
+            const vehicle = bestVehicle || idleVehicles[0];
+            if (!vehicle || !vehicle.currentPos) return;
+            
+            // Find closest graph node to the chosen vehicle's current position
             let vehicleNodeId = null;
             let minVDist = Infinity;
             for (const n of nodes) {
