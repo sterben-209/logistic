@@ -98,7 +98,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             const targetCont = exportTarget.container;
             const targetSlot = exportTarget.slot;
             
-            pendingExportIds.add(targetCont.containerNo);
+            pendingExportIds.add(targetCont.containerNo || targetCont.id);
             lockContainer(targetCont.id);
 
             const bestGate = gates[0];

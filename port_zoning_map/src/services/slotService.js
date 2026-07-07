@@ -171,7 +171,8 @@ export const findContainerToExport = (cargoInfo, inventory, slots, pendingExport
      let foundCont = null;
      for (let i = 0; i < containers.length; i++) {
          const c = containers[i];
-         if (pendingExportsSet.has(c.containerNo)) continue;
+         const cId = c.containerNo || c.id;
+         if (pendingExportsSet.has(cId)) continue;
          
          const contSizeNum = parseInt(c.size, 10) || (String(c.size).includes('40') ? 40 : 20);
          // Check if container matches criteria
