@@ -489,6 +489,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const [slotUpdateTick, setSlotUpdateTick] = useState(0);
   const [showLabels, setShowLabels] = useState(false);
   const [graphData, setGraphData] = useState(null);
+  const [activeRoute, setActiveRoute] = useState([]);
 
   const [searchInput, setSearchInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
