@@ -166,12 +166,14 @@ const Operations = () => {
 
   return paginatedData.map((container, index) => (
     <tr key={container.containerNo || container.id || index} className="data-grid-row">
+      <td className="data-grid-cell text-center text-outline-variant">{(containerPage - 1) * ITEMS_PER_PAGE + index + 1}</td>
       <td className="data-grid-cell font-mono text-primary font-bold tracking-wider">{container.containerNo || container.id}</td>
       <td className="data-grid-cell">
         <span className="px-2 py-0.5 bg-surface-container-highest rounded text-[10px] font-bold text-on-surface-variant">
           {container.size} {container.type === 'REEFER' ? 'RF' : 'GP'}
         </span>
       </td>
+      <td className="data-grid-cell text-secondary">{container.weight || '-'}</td>
       <td className="data-grid-cell text-secondary">{container.zoneId || (container.slotId ? container.slotId.split('-').slice(0,-2).join('-') : 'Unknown')}</td>
       <td className="data-grid-cell text-secondary">{container.bay || '-'}/{container.row || '-'}/{container.tier || '-'}</td>
       <td className="data-grid-cell">
