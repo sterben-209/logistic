@@ -20,9 +20,9 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
   `;
 
   const endpoints = [
-    `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-    `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
-    `https://overpass.osm.ch/api/interpreter?data=${encodeURIComponent(query)}`
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.osm.ch/api/interpreter'
   ];
   
   let data = null;
@@ -30,8 +30,14 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
 
   for (const url of endpoints) {
     try {
-      console.log("Đang thử fetch từ:", url.split('?')[0]);
-      const response = await fetch(url);
+      console.log("Đang thử fetch từ:", url);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'data=' + encodeURIComponent(query)
+      });
       if (!response.ok) {
         throw new Error(`HTTP Error ${response.status}`);
       }
