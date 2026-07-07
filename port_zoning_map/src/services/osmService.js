@@ -20,9 +20,9 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
   `;
 
   const endpoints = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.osm.ch/api/interpreter'
+    'https://overpass.osm.ch/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://overpass-api.de/api/interpreter'
   ];
   
   let data = null;
