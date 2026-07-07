@@ -168,9 +168,16 @@ const Operations = () => {
     <tr key={container.containerNo || container.id || index} className="data-grid-row">
       <td className="data-grid-cell text-center text-outline-variant">{(containerPage - 1) * ITEMS_PER_PAGE + index + 1}</td>
       <td className="data-grid-cell font-mono text-primary font-bold tracking-wider">{container.containerNo || container.id}</td>
-      <td className="data-grid-cell">
+      <td className="data-grid-cell flex items-center gap-2">
         <span className="px-2 py-0.5 bg-surface-container-highest rounded text-[10px] font-bold text-on-surface-variant">
           {container.size} {container.type === 'REEFER' ? 'RF' : 'GP'}
+        </span>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+          container.cargoType === 'FLAMMABLE' ? 'bg-error/10 text-error' :
+          container.cargoType === 'REEFER' ? 'bg-blue-500/10 text-blue-500' :
+          'bg-secondary/10 text-secondary'
+        }`}>
+          {container.cargoType || 'DRY'}
         </span>
       </td>
       <td className="data-grid-cell text-secondary">{container.weight || '-'}</td>
