@@ -1,7 +1,0 @@
-[
-  { "id": "TRK-001", "license_plate": "51C-123.45", "type": "truck" },
-  { "id": "TRK-002", "license_plate": "51C-234.56", "type": "truck" },
-  { "id": "TRK-003", "license_plate": "51C-345.67", "type": "truck" },
-  { "id": "TRK-004", "license_plate": "51C-456.78", "type": "truck" },
-  { "id": "TRK-005", "license_plate": "51C-567.89", "type": "truck" }
-]

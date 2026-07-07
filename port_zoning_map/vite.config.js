@@ -10,7 +10,7 @@ export default defineConfig({
     react()
   ],
   build: {
-    outDir: '../stitch_ai_yard_pathfinding_system/map_app',
+    outDir: 'dist',
     emptyOutDir: true,
   },
 })
