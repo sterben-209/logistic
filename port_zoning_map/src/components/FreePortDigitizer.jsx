@@ -423,6 +423,7 @@ const MapResizer = ({ isActive }) => { const map = useMap(); useEffect(() => { i
 
 const FreePortDigitizer = ({ user, isActive }) => {
   const mapRef = useRef(null);
+  const fleetRef = useRef([]);
   const [storageZones, setStorageZones] = useState([]);
   const slots = useMemo(() => storageZones.flatMap(z => z.slots || []), [storageZones]);
   const [gates, setGates] = useState([]);
