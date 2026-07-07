@@ -64,7 +64,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
               currentIndex: 0,
               path: [], // Will be calculated by dispatcher
               containerId: `CONT-${Date.now()}-${i}`,
-              delayTicks: 0
+              delayTicks: i * 40
             };
             enqueueTask(externalTractor);
 
@@ -121,7 +121,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
               currentIndex: 0,
               path: [],
               containerId: targetCont.id,
-              delayTicks: 0
+              delayTicks: i * 40
             };
             enqueueTask(externalTractor);
 
