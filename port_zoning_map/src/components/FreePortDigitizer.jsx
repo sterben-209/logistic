@@ -488,13 +488,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
 
   const [slotUpdateTick, setSlotUpdateTick] = useState(0);
   const [showLabels, setShowLabels] = useState(false);
-
-  const [activeRoute, setActiveRoute] = useState([]);
-  const [activeFleet, setActiveFleet] = useState([]);
-  const fleetRef = useRef([]);
-  const [activeChe, setActiveChe] = useState([]);
-  const cheRef = useRef([]);
   const [graphData, setGraphData] = useState(null);
+
   const [searchInput, setSearchInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [predictions, setPredictions] = useState([]);
@@ -502,83 +497,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
   
   const [isDetecting, setIsDetecting] = useState(false);
   const [aiStatus, setAiStatus] = useState('');
-  const [isSyncingChe, setIsSyncingChe] = useState(false);
   const [isTagging, setIsTagging] = useState(false);
   const [taggingStatus, setTaggingStatus] = useState('');
-
-  // Khởi tạo CHE (Xe nâng) tự động ngay khi load xong bãi
-  useEffect(() => {
-    if (slots.length === 0 || cheRef.current.length > 0) return;
-    const initCHE = async () => {
-      try {
-        let rawData = await loadLocalCheData();
-        if (!rawData || rawData.length === 0) return;
-        
-        const cheList = rawData.map(c => {
-           const randomSlot = slots[Math.floor(Math.random() * slots.length)];
-           const pos = randomSlot ? [
-               randomSlot.path.reduce((s, p) => s + p[0], 0) / randomSlot.path.length,
-               randomSlot.path.reduce((s, p) => s + p[1], 0) / randomSlot.path.length
-           ] : [10.762622, 106.741000];
-           return {
-               id: c.id,
-               type: c.type,
-               status: 'idle',
-               currentPos: pos,
-               targetSlotPos: null,
-               targetVehicleId: null,
-               handlingProgress: 0
-           };
-        });
-        cheRef.current = cheList;
-        setActiveChe([...cheList]);
-      } catch (e) { console.error("Lỗi khởi tạo CHE", e); }
-    };
-    initCHE();
-  }, [slots]);
-
-  const handleSyncChe = async () => {
-     setIsSyncingChe(true);
-     let syncError = null;
-     let rawData = [];
-     try {
-        rawData = await loadLocalCheData();
-        try {
-            await syncCheData(rawData); // Lưu lên Supabase
-        } catch (dbErr) {
-            console.warn("Chưa tạo bảng che_equipment trên Supabase:", dbErr);
-            syncError = dbErr.message;
-        }
-
-        const cheList = rawData.map(c => {
-           const randomSlot = slots[Math.floor(Math.random() * slots.length)];
-           const pos = randomSlot ? [
-               randomSlot.path.reduce((s, p) => s + p[0], 0) / randomSlot.path.length,
-               randomSlot.path.reduce((s, p) => s + p[1], 0) / randomSlot.path.length
-           ] : [10.762622, 106.741000];
-           return {
-               id: c.id,
-               type: c.type,
-               status: 'idle',
-               currentPos: pos,
-               targetSlotPos: null,
-               targetVehicleId: null,
-               handlingProgress: 0
-           };
-        });
-        cheRef.current = cheList;
-        setActiveChe([...cheList]);
-
-        if (syncError) {
-            alert(`Đã nạp ${cheList.length} xe nâng từ Local JSON!\n(Cảnh báo DB: ${syncError} - Sếp cần tạo bảng trên Supabase)`);
-        } else {
-            alert("Đã đồng bộ " + cheList.length + " thiết bị nâng hạ (CHE) thành công!");
-        }
-     } catch (e) { alert("Lỗi đọc file: " + e.message); }
-     setIsSyncingChe(false);
-  };
-
-  const [isSimulating, setIsSimulating] = useState(false);
   const [activeBaseLayer, setActiveBaseLayer] = useState('Vệ Tinh (ESRI)');
   const [currentZoom, setCurrentZoom] = useState(16);
   const [isSavingToDB, setIsSavingToDB] = useState(false);
@@ -870,307 +790,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
     }
   }, [slots, inventory]);
 
-  // Lắng nghe lệnh từ Operations Hub
-  useEffect(() => {
-    const handleMasterSync = (event) => {
-      if (event.data && event.data.type === 'MASTER_SYNC_FLEET') {
-        const { fleet } = event.data.payload;
-        if (!fleet || !graphData) return;
 
-        Promise.resolve().then(() => {
-           const tempGraph = new Map(graphData);
-           const newFleet = [];
-           
-           fleet.forEach(v => {
-               // Chọn điểm đi/đến thực tế trên bản đồ
-               let startNodeId = gates.length > 0 ? gates[Math.floor(Math.random() * gates.length)].id : null;
-               let endNodeId = slots.length > 0 ? slots[Math.floor(Math.random() * slots.length)].id : null;
-               
-               if (startNodeId && endNodeId) {
-                  const path = findShortestPath(startNodeId, endNodeId, tempGraph);
-                  if (path && path.length > 0) {
-                      const estimatedIdx = Math.floor((v.progress / 100) * (path.length - 1)) || 0;
-                      newFleet.push({
-                          ...v,
-                          origin: startNodeId,
-                          destination: endNodeId,
-                          path: path,
-                          currentPos: [...path[estimatedIdx]],
-                          currentSegmentIdx: estimatedIdx,
-                          speed: v.type === 'truck' ? 0.00002 : 0.00001,
-                      });
-                  } else {
-                      newFleet.push(v);
-                  }
-               } else {
-                  newFleet.push(v);
-               }
-           });
-           
-           fleetRef.current = newFleet;
-           setActiveFleet([...newFleet]);
-        });
-      }
-    };
-    
-    window.addEventListener('message', handleMasterSync);
-    return () => window.removeEventListener('message', handleMasterSync);
-  }, [graphData, gates, slots]);
-
-  // Fleet Animation Loop
-  useEffect(() => {
-    let animationFrameId;
-    let lastSyncTime = 0;
-
-    const animateFleet = (timestamp) => {
-      let hasChanges = false;
-      let hasMoving = false;
-      
-      fleetRef.current.forEach(v => {
-        if (v.status !== 'moving') return;
-        hasMoving = true;
-        hasChanges = true;
-        
-        const p1 = v.path[v.currentSegmentIdx];
-        const p2 = v.path[v.currentSegmentIdx + 1];
-        
-        if (!p2) {
-           if (v.isLeg1) {
-              if (!v.cheStatus) {
-                 v.cheStatus = 'waiting';
-                 // Assign CHE
-                 const idleChe = cheRef.current.find(c => c.status === 'idle');
-                 if (idleChe) {
-                    idleChe.status = 'moving_to_slot';
-                    idleChe.targetVehicleId = v.id;
-                    idleChe.targetSlotPos = [...v.currentPos];
-                 }
-              } else if (v.cheStatus === 'done') {
-                 if (v.leg2Ready && v.pathOut) {
-                    v.path = v.pathOut;
-                    v.currentSegmentIdx = 0;
-                    v.isLeg1 = false;
-                 }
-              }
-           } else {
-              v.status = 'arrived';
-              v.progress = 100;
-           }
-           return;
-        }
-        
-        const lat1 = p1[0];
-        const lng1 = p1[1];
-        const lat2 = p2[0];
-        const lng2 = p2[1];
-        
-        const dx = lat2 - lat1;
-        const dy = lng2 - lng1;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        
-        if (dist < 0.000001) {
-           v.currentSegmentIdx++;
-           return;
-        }
-        
-        const moveRatio = v.speed / dist;
-        
-        let curLat = v.currentPos[0];
-        let curLng = v.currentPos[1];
-        
-        curLat += dx * moveRatio;
-        curLng += dy * moveRatio;
-        
-        const newDx = lat2 - curLat;
-        const newDy = lng2 - curLng;
-        
-        if (dx * newDx + dy * newDy <= 0) {
-           v.currentSegmentIdx++;
-           v.currentPos = [lat2, lng2];
-        } else {
-           v.currentPos = [curLat, curLng];
-        }
-        
-        // Tính góc xoay (Heading) để quay đầu xe
-        v.heading = Math.atan2(dy, dx) * (180 / Math.PI);
-        
-        v.progress = Math.min(99, (v.currentSegmentIdx / (v.path.length - 1)) * 100);
-      });
-      
-      // CHE Animation Logic
-      cheRef.current.forEach(che => {
-         if (che.status === 'idle') return;
-         hasChanges = true;
-         // Cập nhật trạng thái CHE
-         if (che.status === 'moving_to_slot') {
-             const dx = che.targetSlotPos[0] - che.currentPos[0];
-             const dy = che.targetSlotPos[1] - che.currentPos[1];
-             const dist = Math.sqrt(dx*dx + dy*dy);
-             
-             if (dist < 0.000005) {
-                 che.status = 'handling';
-                 che.handlingProgress = 0;
-                 che.currentPos = [...che.targetSlotPos];
-             } else {
-                 const moveRatio = 0.00002 / dist; // Tốc độ di chuyển của cẩu
-                 che.currentPos[0] += dx * moveRatio;
-                 che.currentPos[1] += dy * moveRatio;
-             }
-         } else if (che.status === 'handling') {
-             che.handlingProgress += 1; 
-             if (che.handlingProgress >= 100) {
-                 che.status = 'idle';
-                 const vehicle = fleetRef.current.find(v => v.id === che.targetVehicleId);
-                 if (vehicle) {
-                     vehicle.cheStatus = 'done';
-                 }
-                 che.targetVehicleId = null;
-             }
-         }
-      });
-      
-      if (hasChanges && (timestamp - lastSyncTime > 150)) {
-         // Xóa hẳn xe tải khỏi bản đồ khi đã về đến cổng (arrived)
-         const arrivedVehicles = fleetRef.current.filter(v => v.status === 'arrived');
-         if (arrivedVehicles.length > 0) {
-            setActiveRoute([]); // Xóa đường đi màu xanh khi xe hoàn thành
-         }
-         
-         fleetRef.current = fleetRef.current.filter(v => v.status === 'moving');
-         
-         setActiveFleet([...fleetRef.current]);
-         setActiveChe([...cheRef.current]);
-         
-         window.postMessage({ 
-             type: 'SYNC_FLEET_DATA', 
-             payload: { fleet: fleetRef.current } 
-         }, '*');
-         if (window.parent && window.parent !== window) {
-             window.parent.postMessage({ 
-                 type: 'SYNC_FLEET_DATA', 
-                 payload: { fleet: fleetRef.current } 
-             }, '*');
-         }
-         lastSyncTime = timestamp;
-      }
-      
-      animationFrameId = requestAnimationFrame(animateFleet);
-    };
-    
-    animationFrameId = requestAnimationFrame(animateFleet);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, []);
-
-  // Auto-Simulation Engine (Traffic Generator from JSON file)
-  useEffect(() => {
-    let timeoutId;
-    let isCancelled = false;
-    let currentTaskIndex = 0;
-    
-    if (!isSimulating || !graphData || gates.length === 0 || slots.length === 0) return;
-
-    const runSimulationLoop = async () => {
-       try {
-          const response = await fetch('./dummy_traffic_data.json');
-          const tasks = await response.json();
-          if (!tasks || tasks.length === 0) return;
-
-          const processNextTask = () => {
-             if (isCancelled) return;
-             
-             const task = tasks[currentTaskIndex];
-             const tempGraph = new Map(graphData);
-             
-             // Xử lý logic chọn Gate ngẫu nhiên
-             const gateId = gates[Math.floor(Math.random() * gates.length)]?.id;
-             
-             if (gateId) {
-                Promise.resolve().then(() => {
-                   let targetSlot = null;
-                   
-                   // Chọn điểm cuối theo kịch bản trong JSON
-                   if (task.destination === 'SLOT_EMPTY_RANDOM') {
-                      const emptySlots = slots.filter(s => !s.status || s.status === 'empty');
-                      if (emptySlots.length > 0) targetSlot = emptySlots[Math.floor(Math.random() * emptySlots.length)];
-                   } else if (task.origin === 'SLOT_OCCUPIED_RANDOM') {
-                      const occSlots = slots.filter(s => s.status && s.status !== 'empty');
-                      if (occSlots.length > 0) targetSlot = occSlots[Math.floor(Math.random() * occSlots.length)];
-                   }
-                   
-                   if (!targetSlot) {
-                      // Fallback lấy slot bất kỳ nếu không thỏa mãn
-                      targetSlot = slots[Math.floor(Math.random() * slots.length)];
-                   }
-
-                   if (targetSlot) {
-                      // Vẽ đường nối Điểm Đầu -> Điểm Cuối (Leg 1)
-                      const pathIn = findShortestPath(gateId, targetSlot.id, tempGraph);
-                      
-                      if (pathIn.length > 0) {
-                         const truckId = task.id;
-                         fleetRef.current.push({
-                            id: truckId,
-                            type: task.type,
-                            cargoInfo: task.cargoType,
-                            origin: gateId,
-                            destination: 'CALCULATING...', 
-                            path: pathIn,
-                            progress: 0,
-                            status: 'moving',
-                            speed: task.type === 'truck' ? 0.00001 : 0.000007,
-                            currentSegmentIdx: 0,
-                            currentPos: [...pathIn[0]],
-                            isLeg1: true,
-                            leg2Ready: false,
-                            pathOut: null
-                         });
-                         
-                         // Tính ngầm lộ trình thoát ra cổng gần nhất (Lazy pre-computation)
-                         setTimeout(() => {
-                             Promise.resolve().then(async () => {
-                                let shortestOutPath = [];
-                                let bestGateOutId = gateId;
-                                for (const g of gates) {
-                                   const pOut = findShortestPath(targetSlot.id, g.id, tempGraph);
-                                   if (pOut.length > 0 && (shortestOutPath.length === 0 || pOut.length < shortestOutPath.length)) {
-                                      shortestOutPath = pOut;
-                                      bestGateOutId = g.id;
-                                   }
-                                   // Chống lag: Nhường CPU lại cho trình duyệt render Frame mới trước khi tính tiếp cổng khác
-                                   await new Promise(resolve => setTimeout(resolve, 2));
-                                }
-                                
-                                const vehicle = fleetRef.current.find(v => v.id === truckId);
-                                if (vehicle) {
-                                   vehicle.pathOut = shortestOutPath.length > 0 ? shortestOutPath : [...pathIn].reverse();
-                                   vehicle.destination = bestGateOutId;
-                                   vehicle.leg2Ready = true;
-                                }
-                             });
-                         }, 10);
-                      }
-                   }
-                });
-             }
-             
-             currentTaskIndex = (currentTaskIndex + 1) % tasks.length;
-             const nextDelay = tasks[currentTaskIndex].delayMs || 3000;
-             timeoutId = setTimeout(processNextTask, nextDelay);
-          };
-          
-          // Bắt đầu vòng lặp với task đầu tiên
-          processNextTask();
-       } catch (error) {
-          console.error("Lỗi đọc file dummy_traffic_data.json:", error);
-       }
-    };
-    
-    runSimulationLoop();
-    return () => {
-       isCancelled = true;
-       clearTimeout(timeoutId);
-    };
-  }, [isSimulating, graphData, gates, slots]);
 
   const handlePolygonComplete = useCallback((latLngs) => {
     // Ensure we have at least 3 distinct points to form a valid polygon (will become 4 when closed)
@@ -1977,11 +1597,12 @@ const FreePortDigitizer = ({ user, isActive }) => {
               {/* Vẽ xe nhàn rỗi (IDLE) từ Fleet Registry */}
               {fleetRegistry.map(vehicle => {
                 if (vehicle.status !== 'IDLE' || !vehicle.currentPos) return null;
+                const icon = vehicle.type === 'agv' ? staticAgvIcon : (vehicle.type === 'rs' ? staticRsIcon : staticRtgIcon);
                 return (
                   <Marker 
                      key={`idle-${vehicle.id}`} 
                      position={vehicle.currentPos} 
-                     icon={staticTruckIcon}
+                     icon={icon}
                      zIndexOffset={900}
                   >
                      <Tooltip permanent direction="top" opacity={0.8}>
@@ -2007,28 +1628,24 @@ const FreePortDigitizer = ({ user, isActive }) => {
                   heading = (Math.atan2(dx, dy) * 180 / Math.PI);
                 }
 
+                let icon = staticTruckIcon;
+                if (task.type === 'SUPPORT' && task.assignedVehicleId) {
+                   if (task.assignedVehicleId.startsWith('AGV')) icon = staticAgvIcon;
+                   else if (task.assignedVehicleId.startsWith('RS')) icon = staticRsIcon;
+                   else icon = staticRtgIcon;
+                }
+
                 return (
                   <RotatedMarker 
                      key={task.id} 
                      id={task.type === 'SUPPORT' ? (task.assignedVehicleId || 'AGV') : task.truckPlate}
                      position={currentPos} 
-                     icon={task.type === 'SUPPORT' ? staticRtgIcon : staticTruckIcon} 
+                     icon={icon} 
                      heading={heading}
                      progress={task.progress}
                   />
                 );
               })}
-
-              {/* Vẽ CHE (Thiết bị nâng hạ) */}
-              {activeChe.map(che => (
-                 <Marker key={che.id} position={che.currentPos} icon={che.type === 'rtg' ? staticRtgIcon : staticRsIcon} zIndexOffset={1000}>
-                   <Tooltip direction="top" opacity={0.9} permanent={che.status !== 'idle'}>
-                      <span style={{ fontWeight: 'bold', color: che.status === 'idle' ? '#666' : '#eab308' }}>{che.id}</span>
-                      {che.status === 'handling' && ` (${Math.round(che.handlingProgress)}%)`}
-                      {che.status === 'moving_to_slot' && ` (Đang chạy)`}
-                   </Tooltip>
-                 </Marker>
-              ))}
             </FeatureGroup>
           </LayersControl.Overlay>
         </LayersControl>
