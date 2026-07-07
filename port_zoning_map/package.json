@@ -12,8 +12,8 @@
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
     "@react-google-maps/api": "^2.20.8",
-    "@supabase/supabase-js": "^2.110.0",
     "@turf/turf": "^7.3.5",
+    "crypto-js": "^4.2.0",
     "idb-keyval": "^6.2.6",
     "leaflet": "^1.9.4",
     "react": "^19.2.7",

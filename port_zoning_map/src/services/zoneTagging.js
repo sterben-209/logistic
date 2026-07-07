@@ -142,6 +142,9 @@ export const assignZoneTags = (zones, buildings, gateNode) => {
 
     const intersectsBuilding = buildingFeatures.some(building => {
       if (!building) return false;
+      // Chỉ kiểm tra các building có subType là WAREHOUSE
+      if (building.properties.subType !== 'WAREHOUSE') return false;
+
       try {
         const intersection = turf.intersect(turf.featureCollection([zone, building]));
         if (intersection) {
@@ -172,6 +175,51 @@ export const assignZoneTags = (zones, buildings, gateNode) => {
   }).filter(Boolean);
 
   // 2. RULE 2: CÁCH LY HÓA CHẤT (Hàng Nguy hiểm/Dễ cháy nổ)
+  const MIN_TANK_DISTANCE = 100;
+  
+  // Xác định các bãi NẰM SÁT các tòa nhà loại TANK (Giao cắt hoặc rất gần < 1m)
+  currentZones = currentZones.map(zone => {
+    if (!zone) return null;
+    if (zone.properties.zoneType) return zone;
+
+    let nearTank = false;
+    for (const building of buildingFeatures) {
+      if (building && building.properties.subType === 'TANK') {
+        try {
+          // Tính khoảng cách Mép-cách-Mép (Edge-to-Edge) thay vì Tâm-cách-Tâm
+          // Tạo một vùng đệm (buffer) 10 mét xung quanh bồn chứa
+          const bufferedTank = turf.buffer(building, 10, { units: 'meters' });
+          // Nếu bãi trống giao cắt với vùng đệm 10m của bồn chứa -> Bãi đó nằm sát bồn chứa!
+          if (turf.booleanIntersects(zone, bufferedTank)) {
+            nearTank = true;
+            break;
+          }
+        } catch (e) {
+          // Fallback an toàn nếu lỗi tạo buffer
+          const distToTank = turf.distance(turf.centroid(zone), turf.centroid(building), { units: 'meters' });
+          if (distToTank <= 10) {
+            nearTank = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (nearTank) {
+      return {
+        ...zone,
+        properties: {
+          ...zone.properties,
+          zoneType: 'DANGEROUS',
+          subType: 'TANK_ADJACENT',
+          allowedCargo: ['FLAMMABLE', 'TOXIC'],
+          taggingReason: 'Bãi nằm ngay cạnh Bồn chứa hóa chất (TANK) nên TỰ ĐỘNG bị chỉ định làm bãi hóa chất.'
+        }
+      };
+    }
+    return zone;
+  });
+
   const untaggedForDangerous = currentZones.filter(z => !z.properties.zoneType);
   if (untaggedForDangerous.length > 0) {
     let mostIsolatedZone = null;
@@ -180,19 +228,29 @@ export const assignZoneTags = (zones, buildings, gateNode) => {
     untaggedForDangerous.forEach(zone => {
       const centroid = turf.centroid(zone);
       let totalDistance = 0;
+      let minDistanceToTank = Infinity;
 
       buildingFeatures.forEach(building => {
         if (!building) return;
-        totalDistance += turf.distance(centroid, turf.centroid(building), { units: 'meters' });
+        const dist = turf.distance(centroid, turf.centroid(building), { units: 'meters' });
+        totalDistance += dist;
+        
+        if (building.properties.subType === 'TANK' && dist < minDistanceToTank) {
+          minDistanceToTank = dist;
+        }
       });
 
       if (gateFeature) {
         totalDistance += turf.distance(centroid, gateFeature, { units: 'meters' });
       }
 
-      if (totalDistance > maxDistance) {
-        maxDistance = totalDistance;
-        mostIsolatedZone = zone;
+      // Chỉ xét bãi làm bãi hóa chất nếu nó cách xa các TANK ít nhất MIN_TANK_DISTANCE (100m)
+      // (Hoặc nếu không có TANK nào thì điều kiện này mặc định pass)
+      if (minDistanceToTank >= MIN_TANK_DISTANCE) {
+        if (totalDistance > maxDistance) {
+          maxDistance = totalDistance;
+          mostIsolatedZone = zone;
+        }
       }
     });
 
@@ -206,7 +264,7 @@ export const assignZoneTags = (zones, buildings, gateNode) => {
               zoneType: 'DANGEROUS',
               subType: 'ISOLATED',
               allowedCargo: ['FLAMMABLE', 'TOXIC'],
-              taggingReason: 'Zone có vị trí cô lập nhất, nằm xa các tòa nhà và cổng cảng để đảm bảo an toàn cháy nổ.'
+              taggingReason: `Zone có vị trí cô lập nhất, nằm xa cổng cảng và cách TANK ít nhất ${MIN_TANK_DISTANCE}m để đảm bảo an toàn.`
             }
           };
         }

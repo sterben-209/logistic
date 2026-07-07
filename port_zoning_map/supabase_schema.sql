@@ -14,3 +14,14 @@ CREATE TABLE public.vehicles (
     type text default 'truck',
     status text default 'idle'
 );
+
+-- Tạo bảng AuditLogs (Hash-Chain)
+CREATE TABLE public."AuditLogs" (
+    id uuid default gen_random_uuid() primary key,
+    "containerId" text not null,
+    action text not null,
+    details jsonb,
+    timestamp timestamp with time zone default timezone('utc'::text, now()) not null,
+    "previousHash" text not null,
+    "currentHash" text not null
+);

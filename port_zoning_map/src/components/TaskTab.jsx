@@ -1,23 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import useTaskStore from '../store/useTaskStore';
 import { findBestSlot, findContainerToExport } from '../services/slotService';
-import { buildDynamicGraph, findShortestPath } from '../services/routingService';
-
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const calculatePathDistance = (path) => {
-    let dist = 0;
-    for(let i = 0; i < path.length - 1; i++) {
-        const dx = path[i+1][1] - path[i][1];
-        const dy = path[i+1][0] - path[i][0];
-        dist += Math.sqrt(dx*dx + dy*dy);
-    }
-    return dist;
-};
-
   export default function TaskTab() {
-  const { inventory, tasks, addTask, lockContainer, broadcasters, gates, slots, storageZones, portBoundary } = useTaskStore();
+  const { inventory, tasks, taskQueue, enqueueTask, lockContainer, broadcasters, gates, slots, storageZones, portBoundary } = useTaskStore();
   const activeTasks = tasks.filter(t => t.status !== 'COMPLETED');
+  const pendingTasks = taskQueue;
 
   const [taskType, setTaskType] = useState('INBOUND');
   const [size, setSize] = useState(20);
@@ -25,15 +14,9 @@ const calculatePathDistance = (path) => {
   const [quantity, setQuantity] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Cache the routing graph to avoid rebuilding on every submit
-  const routingGraph = useMemo(() => {
-     if (!gates || gates.length === 0 || !storageZones || storageZones.length === 0) return null;
-     return buildDynamicGraph(storageZones, slots, gates, portBoundary);
-  }, [storageZones, slots, gates, portBoundary]);
-
   const handleBulkSubmit = async (e) => {
     e.preventDefault();
-    if (!routingGraph) {
+    if (!gates || gates.length === 0 || !storageZones || storageZones.length === 0) {
         alert("Bản đồ chưa sẵn sàng! Vui lòng chờ load Gate và Zones.");
         return;
     }
@@ -61,35 +44,16 @@ const calculatePathDistance = (path) => {
               break; 
             }
 
-            // Find best gate (shortest path to target slot)
-            let bestGate = gates[0];
-            let shortestPath = null;
-            let minCost = Infinity;
+            const bestGate = gates[0];
+            const tractorId = `TRUCK-${Math.floor(10000 + Math.random() * 90000)}`;
 
-            for (const gate of gates) {
-                const pathArray = findShortestPath(gate.id, targetSlot.id, routingGraph);
-                if (pathArray && pathArray.length > 0) {
-                    const cost = calculatePathDistance(pathArray);
-                    if (cost < minCost) {
-                        minCost = cost;
-                        shortestPath = pathArray;
-                        bestGate = gate;
-                    }
-                }
-            }
-
-            if (!shortestPath) {
-                console.warn("Không tìm được đường đi từ Gate tới Slot", targetSlot.id);
-                continue;
-            }
-
-            const taskData = {
-              id: generatedId,
-              type: 'INBOUND',
-              truckPlate: `51C-${Math.floor(10000 + Math.random() * 90000)}`,
+            // 1. Sinh ra Xe Đầu Kéo ngoại vi (External Tractor)
+            const externalTractor = {
+              id: tractorId,
+              type: 'INBOUND', // Same as before so useVehicleAnimation handles it automatically
+              truckPlate: tractorId,
               cargoType,
               size,
-              path: shortestPath,
               gateId: bestGate.id,
               targetSlotId: targetSlot.id,
               targetZoneId: targetSlot.zoneId,
@@ -98,10 +62,27 @@ const calculatePathDistance = (path) => {
               status: 'EN_ROUTE_TO_SLOT',
               progress: 0,
               currentIndex: 0,
-              containerId: `CONT-${Date.now()}-${i}` 
+              path: [], // Will be calculated by dispatcher
+              containerId: `CONT-${Date.now()}-${i}`,
+              delayTicks: 0
             };
-            addTask(taskData);
-            if (broadcasters?.broadcastTaskAdded) broadcasters.broadcastTaskAdded(taskData);
+            enqueueTask(externalTractor);
+
+            // 2. Ném Yêu cầu hỗ trợ vào Queue cho AGV/RTG nội bộ
+            const supportTask = {
+              id: `SUPPORT-${generatedId}`,
+              type: 'SUPPORT', // New type for AGV
+              targetSlotId: targetSlot.id,
+              targetZoneId: targetSlot.zoneId,
+              targetBay: targetSlot.bay,
+              targetRow: targetSlot.row,
+              tractorId: tractorId,
+              status: 'PENDING_SUPPORT',
+              currentIndex: 0,
+              progress: 0
+            };
+            enqueueTask(supportTask);
+            if (broadcasters?.broadcastTaskAdded) broadcasters.broadcastTaskAdded(externalTractor);
 
           } else {
             // OUTBOUND
@@ -120,35 +101,16 @@ const calculatePathDistance = (path) => {
             pendingExportIds.add(targetCont.containerNo);
             lockContainer(targetCont.id);
 
-            let bestGate = gates[0];
-            let shortestPath = null;
-            let minCost = Infinity;
+            const bestGate = gates[0];
+            const tractorId = `TRUCK-${Math.floor(10000 + Math.random() * 90000)}`;
 
-            // Path from Slot to Gate
-            for (const gate of gates) {
-                const pathArray = findShortestPath(targetSlot.id, gate.id, routingGraph);
-                if (pathArray && pathArray.length > 0) {
-                    const cost = calculatePathDistance(pathArray);
-                    if (cost < minCost) {
-                        minCost = cost;
-                        shortestPath = pathArray;
-                        bestGate = gate;
-                    }
-                }
-            }
-
-            if (!shortestPath) {
-                console.warn("Không tìm được đường đi từ Slot tới Gate");
-                continue;
-            }
-
-            const taskData = {
-              id: generatedId,
+            // 1. Sinh ra Xe Đầu Kéo ngoại vi (External Tractor)
+            const externalTractor = {
+              id: tractorId,
               type: 'OUTBOUND',
-              truckPlate: `51C-${Math.floor(10000 + Math.random() * 90000)}`,
+              truckPlate: tractorId,
               cargoType,
               size,
-              path: shortestPath,
               gateId: bestGate.id,
               targetSlotId: targetSlot.id,
               targetZoneId: targetSlot.zoneId,
@@ -157,15 +119,32 @@ const calculatePathDistance = (path) => {
               status: 'EN_ROUTE_TO_SLOT',
               progress: 0,
               currentIndex: 0,
-              containerId: targetCont.id
+              path: [],
+              containerId: targetCont.id,
+              delayTicks: 0
             };
-            addTask(taskData);
-            if (broadcasters?.broadcastTaskAdded) broadcasters.broadcastTaskAdded(taskData);
+            enqueueTask(externalTractor);
+
+            // 2. Ném Yêu cầu hỗ trợ vào Queue cho AGV/RTG nội bộ
+            const supportTask = {
+              id: `SUPPORT-${generatedId}`,
+              type: 'SUPPORT',
+              targetSlotId: targetSlot.id,
+              targetZoneId: targetSlot.zoneId,
+              targetBay: targetSlot.bay,
+              targetRow: targetSlot.row,
+              tractorId: tractorId,
+              status: 'PENDING_SUPPORT',
+              currentIndex: 0,
+              progress: 0
+            };
+            enqueueTask(supportTask);
+            if (broadcasters?.broadcastTaskAdded) broadcasters.broadcastTaskAdded(externalTractor);
           }
         }
     } catch (err) {
         console.error("Lỗi khi điều phối:", err);
-        alert("Có lỗi xảy ra khi tính toán đường đi. Vui lòng thử lại!");
+        alert("Có lỗi xảy ra khi tính toán đường đi. Vuyên lòng thử lại!");
     } finally {
         setIsProcessing(false);
     }
@@ -210,6 +189,18 @@ const calculatePathDistance = (path) => {
         <>
           <form onSubmit={handleBulkSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
             
+            <div style={{ display: 'flex', gap: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ flex: 1, padding: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>Đang chạy</span>
+                <span style={{ fontSize: '18px', fontWeight: '700', color: '#38bdf8' }}>{activeTasks.length}</span>
+              </div>
+              <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
+              <div style={{ flex: 1, padding: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>Hàng đợi</span>
+                <span style={{ fontSize: '18px', fontWeight: '700', color: '#fbbf24' }}>{pendingTasks.length}</span>
+              </div>
+            </div>
+
             {/* Task Type Switcher */}
             <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', padding: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
               <div 

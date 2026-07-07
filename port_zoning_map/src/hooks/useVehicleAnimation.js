@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import useTaskStore from '../store/useTaskStore';
+import { logAuditEvent, MOCK_WORKERS } from '../services/auditService';
 
 export default function useVehicleAnimation() {
   const requestRef = useRef();
@@ -15,15 +16,74 @@ export default function useVehicleAnimation() {
     const state = useTaskStore.getState();
     const tasks = tasksRef.current;
     
+    const SAFE_DISTANCE_SQ = 0.00000003; // ~15-20 meters squared
+
+    const checkCollision = (task, nextIndex) => {
+        const myNextPos = task.path[nextIndex];
+        if (!myNextPos) return true;
+
+        for (const other of tasks) {
+           if (other.id === task.id || other.status === 'COMPLETED' || other.status === 'HANDLING') continue;
+           if (!other.path || other.currentIndex === undefined) continue;
+           if (other.delayTicks && other.delayTicks > 0) continue; // Waiting at spawn
+           
+           const otherPos = other.path[other.currentIndex];
+           if (!otherPos) continue;
+           
+           const dx = myNextPos[1] - otherPos[1];
+           const dy = myNextPos[0] - otherPos[0];
+           if (dx*dx + dy*dy < SAFE_DISTANCE_SQ) { 
+               return false; // I yield (I stop)
+           }
+        }
+        return true;
+    };
+    
     // We only call state updates if something actually changes to avoid thrashing
     tasks.forEach(task => {
       if (task.status === 'COMPLETED') return;
+      
+      // Handle spawn staggering
+      if (task.delayTicks && task.delayTicks > 0) {
+          state.updateTask(task.id, { delayTicks: task.delayTicks - 1 });
+          return;
+      }
 
       const pathLength = task.path.length;
 
       if (task.status === 'EN_ROUTE_TO_SLOT') {
         if (task.currentIndex >= pathLength - 1) {
+          
+          if (task.type === 'SUPPORT') {
+            // AGV reached the slot, it's done. Wait for Tractor to finish.
+            state.updateTask(task.id, { status: 'COMPLETED', progress: 100 });
+            if (task.assignedVehicleId) {
+                state.updateVehicle(task.assignedVehicleId, { 
+                  status: 'IDLE', 
+                  currentPos: task.path[task.currentIndex] 
+                });
+            }
+            setTimeout(() => state.removeTask(task.id), 500);
+            return;
+          }
+
           state.updateTask(task.id, { status: 'HANDLING' });
+          // Log Crane Worker Action
+          const craneWorker = (task.cargoType === 'HAZARDOUS' || task.cargoType === 'CHEMICAL') 
+            ? MOCK_WORKERS.CRANE_HAZARDOUS 
+            : MOCK_WORKERS.CRANE_DRY;
+            
+          logAuditEvent(
+            craneWorker.name, 
+            'YARD_DROP_CONFIRMED', 
+            task.containerId, 
+            { 
+              workerWalletAddress: craneWorker.wallet,
+              status: "Verified on Edge Device",
+              allocatedZone: task.targetZoneId
+            }
+          );
+
           setTimeout(() => {
             const currentTask = useTaskStore.getState().tasks.find(t => t.id === task.id);
             if (currentTask) {
@@ -38,10 +98,34 @@ export default function useVehicleAnimation() {
           }, 1500); // Reduce handling time from 3s to 1.5s
         } else {
           // Jump 4 nodes per tick to increase speed 4x without CPU overhead
-          const nextIndex = Math.min(task.currentIndex + 4, pathLength - 1);
+          let nextIndex = Math.min(task.currentIndex + 4, pathLength - 1);
+          let newStuckTicks = task.stuckTicks || 0;
+          let newGhostTicks = task.ghostTicks || 0;
+          let isGhost = false;
+
+          if (newGhostTicks > 0) {
+              newGhostTicks--;
+              isGhost = true;
+              newStuckTicks = 0;
+              nextIndex = Math.min(task.currentIndex + 2, pathLength - 1); // Move slower in ghost mode
+          }
+
+          if (!isGhost && !checkCollision(task, nextIndex)) {
+              nextIndex = task.currentIndex; // Traffic stop
+              newStuckTicks++;
+              if (newStuckTicks >= 60) { // 3 seconds (60 ticks @ 50ms)
+                  newStuckTicks = 0;
+                  newGhostTicks = 40; // 2 seconds ghost mode (40 ticks @ 50ms)
+              }
+          } else if (!isGhost) {
+              newStuckTicks = 0; // reset if moving normally
+          }
+
           state.updateTask(task.id, { 
             currentIndex: nextIndex,
-            progress: (nextIndex / pathLength) * 100
+            progress: (nextIndex / pathLength) * 100,
+            stuckTicks: newStuckTicks,
+            ghostTicks: newGhostTicks
           });
         }
       }
@@ -49,6 +133,20 @@ export default function useVehicleAnimation() {
       if (task.status === 'EN_ROUTE_TO_GATE') {
         if (task.currentIndex >= pathLength - 1) {
           state.updateTask(task.id, { status: 'COMPLETED', progress: 100 });
+          
+          // Log Gate Worker Action
+          const gateWorker = MOCK_WORKERS.GATE;
+          logAuditEvent(
+            gateWorker.name, 
+            'GATE_OUT_CONFIRMED', 
+            task.containerId, 
+            { 
+              workerWalletAddress: gateWorker.wallet,
+              status: "Verified on Edge Device",
+              allocatedZone: "GATE_AREA"
+            }
+          );
+
           if (task.type === 'INBOUND') {
             const existingContainers = state.inventory.filter(c => 
                c.zoneId === task.targetZoneId && c.bay === task.targetBay && c.row === task.targetRow
@@ -71,18 +169,44 @@ export default function useVehicleAnimation() {
             state.removeContainer(task.containerId);
           }
           
-          const currentState = useTaskStore.getState();
-          if (currentState.broadcasters?.broadcastInventorySync) {
-            currentState.broadcasters.broadcastInventorySync(currentState.inventory);
+          if (task.assignedVehicleId) {
+            state.updateVehicle(task.assignedVehicleId, { 
+              status: 'IDLE', 
+              currentPos: task.path[task.currentIndex] 
+            });
           }
           
-          setTimeout(() => state.removeTask(task.id), 500); 
+          setTimeout(() => state.removeTask(task.id), 500);  
         } else {
           // Jump 4 nodes per tick to increase speed 4x without CPU overhead
-          const nextIndex = Math.min(task.currentIndex + 4, pathLength - 1);
+          let nextIndex = Math.min(task.currentIndex + 4, pathLength - 1);
+          let newStuckTicks = task.stuckTicks || 0;
+          let newGhostTicks = task.ghostTicks || 0;
+          let isGhost = false;
+
+          if (newGhostTicks > 0) {
+              newGhostTicks--;
+              isGhost = true;
+              newStuckTicks = 0;
+              nextIndex = Math.min(task.currentIndex + 2, pathLength - 1); // Move slower in ghost mode
+          }
+
+          if (!isGhost && !checkCollision(task, nextIndex)) {
+              nextIndex = task.currentIndex; // Traffic stop
+              newStuckTicks++;
+              if (newStuckTicks >= 60) { // 3 seconds (60 ticks @ 50ms)
+                  newStuckTicks = 0;
+                  newGhostTicks = 40; // 2 seconds ghost mode (40 ticks @ 50ms)
+              }
+          } else if (!isGhost) {
+              newStuckTicks = 0; // reset if moving normally
+          }
+          
           state.updateTask(task.id, { 
             currentIndex: nextIndex,
-            progress: (nextIndex / pathLength) * 100
+            progress: (nextIndex / pathLength) * 100,
+            stuckTicks: newStuckTicks,
+            ghostTicks: newGhostTicks
           });
         }
       }

@@ -366,43 +366,6 @@ body {
   text-align: center;
 }
 
-.btn-supabase-login {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  padding: 14px 24px;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  justify-content: center;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.btn-supabase-login:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-}
-
-.btn-supabase-login:active {
-  transform: translateY(0);
-}
-
-.google-icon {
-  width: 24px;
-  height: 24px;
-  background: white;
-  border-radius: 50%;
-  padding: 4px;
-}
-
 .loading-spinner {
   width: 48px;
   height: 48px;

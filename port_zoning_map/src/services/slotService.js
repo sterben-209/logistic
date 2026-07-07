@@ -1,19 +1,26 @@
 export const findBestSlot = (cargoInfo, slots, storageZones, inventory) => {
   const { size, weight, cargoType } = cargoInfo;
   
-  // 1. Determine target zone type
-  let targetZoneType = 'YARD';
-  if (cargoType === 'FLAMMABLE') targetZoneType = 'DANGEROUS';
-  else if (cargoType === 'REEFER') targetZoneType = 'REEFER';
-
-  // Find all zones that match the target zone type
-  const matchingZones = storageZones.filter(z => z.zoneType === targetZoneType);
-  let validZoneIds = matchingZones.map(z => z.id);
+  // 1. Tìm các khu vực ưu tiên có ghi rõ loại hàng hóa (vd: TANK_ADJACENT, WAREHOUSE)
+  let validZoneIds = [];
+  const explicitZones = storageZones.filter(z => z.allowedCargo && z.allowedCargo.includes(cargoType));
   
-  // Fallback if no specific zone exists for this cargo type
-  if (validZoneIds.length === 0) {
-      const generalZones = storageZones.filter(z => z.zoneType === 'YARD' || z.zoneType === 'GENERAL');
-      validZoneIds = generalZones.map(z => z.id);
+  if (explicitZones.length > 0) {
+      validZoneIds = explicitZones.map(z => z.id);
+  } else {
+      // 2. Fallback sang logic zoneType mặc định
+      let targetZoneType = 'YARD';
+      if (cargoType === 'FLAMMABLE' || cargoType === 'CHEMICAL') targetZoneType = 'DANGEROUS';
+      else if (cargoType === 'REEFER') targetZoneType = 'REEFER';
+
+      const matchingZones = storageZones.filter(z => z.zoneType === targetZoneType);
+      validZoneIds = matchingZones.map(z => z.id);
+      
+      // Fallback nếu không có zone chuyên dụng nào
+      if (validZoneIds.length === 0) {
+          const generalZones = storageZones.filter(z => z.zoneType === 'YARD' || z.zoneType === 'GENERAL');
+          validZoneIds = generalZones.map(z => z.id);
+      }
   }
   
   // If still no zones, use all zones that are not ROAD
@@ -118,8 +125,12 @@ export const findBestSlot = (cargoInfo, slots, storageZones, inventory) => {
          score += (topWeight - newWeight);
      }
      
-     // Randomize a bit to distribute load
-     score += Math.random() * 10;
+     // Deterministic tie-breaker based on slot ID to distribute load consistently across reloads
+     let idHash = 0;
+     for (let i = 0; i < slot.id.length; i++) {
+        idHash = (idHash * 31 + slot.id.charCodeAt(i)) % 100;
+     }
+     score += (idHash / 10);
      
      return { slot, score };
   });
@@ -188,9 +199,11 @@ export const findContainerToExport = (cargoInfo, inventory, slots, pendingExport
 
   if (candidates.length === 0) return null;
 
-  // Optional: could score candidates based on proximity to gate or something.
-  // For now, just pick a random one.
-  return candidates[Math.floor(Math.random() * candidates.length)];
+  // Make selection deterministic by sorting candidates by slot ID
+  candidates.sort((a, b) => a.slot.id.localeCompare(b.slot.id));
+  
+  // Always pick the first one in the sorted list to ensure the same behavior after F5
+  return candidates[0];
 };
 
 export const calculateNewTier = (zoneName, bay, row, size, inventory) => {

@@ -39,30 +39,12 @@ const Layout = () => {
           </NavLink>
           
           <NavLink 
-            to="/inventory" 
+            to="/audit-trail" 
             className={({isActive}) => `flex items-center gap-3 px-4 py-3 transition-colors rounded-lg group/item ${isActive ? 'bg-primary/10 text-primary border-r-2 border-primary rounded-l-lg rounded-r-none' : 'text-on-surface-variant hover:bg-surface-container-highest/50'}`}
-            title="Inventory"
+            title="Audit Trail"
           >
-            <span className="material-symbols-outlined shrink-0 -ml-1" style={{fontVariationSettings: "'FILL' 1"}}>inventory_2</span>
-            <span className="text-sm font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Inventory</span>
-          </NavLink>
-          
-          <NavLink 
-            to="/analytics" 
-            className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group/item"
-            title="Analytics"
-          >
-            <span className="material-symbols-outlined group-hover/item:text-primary transition-colors shrink-0 -ml-1">analytics</span>
-            <span className="text-sm font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Analytics</span>
-          </NavLink>
-          
-          <NavLink 
-            to="/logistics" 
-            className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest/50 transition-colors rounded-lg group/item"
-            title="Logistics Fleet"
-          >
-            <span className="material-symbols-outlined group-hover/item:text-primary transition-colors shrink-0 -ml-1">local_shipping</span>
-            <span className="text-sm font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Logistics Fleet</span>
+            <span className="material-symbols-outlined group-hover/item:text-primary transition-colors shrink-0 -ml-1">security</span>
+            <span className="text-sm font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Audit Trail</span>
           </NavLink>
         </nav>
 

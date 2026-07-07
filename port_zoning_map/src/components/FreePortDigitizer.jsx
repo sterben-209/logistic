@@ -20,14 +20,45 @@ import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import { generateGridWithTurf, createFlatBufferPolygon } from '../services/turfService';
 import { fetchOSMFeatures } from '../services/osmService';
-import { buildGraph, findShortestPath } from '../services/routingService';
-import { saveMapData, loadMapData, logout, loadLocalCheData, syncCheData } from '../services/supabaseService';
+import { buildGraph, findShortestPath, buildDynamicGraph } from '../services/routingService';
+import { logAuditEvent } from '../services/auditService';
 import { get, set, del } from 'idb-keyval';
 import CanvasSlotLayer from './CanvasSlotLayer';
 import TaskTab from './TaskTab';
 import useVehicleAnimation from '../hooks/useVehicleAnimation';
-import useRealtimeSync from '../hooks/useRealtimeSync';
 import useTaskStore from '../store/useTaskStore';
+
+// Local storage replacements for Supabase
+const saveMapData = async (userId, data) => {
+  try {
+    await set(`portMapData_${userId || 'default'}`, data);
+  } catch (err) {
+    console.error("Local save error:", err);
+  }
+};
+
+const loadMapData = async (userId) => {
+  try {
+    return await get(`portMapData_${userId || 'default'}`);
+  } catch (err) {
+    console.error("Local load error:", err);
+    return null;
+  }
+};
+
+const loadLocalCheData = async () => {
+   try {
+     const response = await fetch('./dummy_che_data.json');
+     return await response.json();
+   } catch (err) {
+     console.error("Failed to load local CHE data", err);
+     return [];
+   }
+};
+
+const syncCheData = async (data) => {
+  // Offline mode: do nothing
+};
 
 import L from 'leaflet';
 delete L.Icon.Default.prototype._getIconUrl;
@@ -176,6 +207,7 @@ const HoverInfoPanel = ({ inventory }) => {
 const ZonePopupForm = ({ zone, onSave, onGenerateGrid, onAdjustPadding }) => {
   const [name, setName] = useState(zone.name);
   const [zoneType, setZoneType] = useState(zone.zoneType);
+  const [subType, setSubType] = useState(zone.subType || 'GENERAL_BUILDING');
   const [isVerified, setIsVerified] = useState(zone.isVerified);
   const [isGenerating, setIsGenerating] = useState(false);
   const [bearing, setBearing] = useState(zone.bearing || 0);
@@ -190,7 +222,7 @@ const ZonePopupForm = ({ zone, onSave, onGenerateGrid, onAdjustPadding }) => {
     if (!finalVerified && (zoneType === 'REEFER' || zoneType === 'DANGEROUS')) {
       alert("Bạn phải check xác nhận an toàn theo quy định QCVN!"); return;
     }
-    onSave(zone.id, { name, zoneType, isVerified: finalVerified, bearing });
+    onSave(zone.id, { name, zoneType, subType, isVerified: finalVerified, bearing });
   };
 
   const handleGrid = () => {
@@ -222,6 +254,16 @@ const ZonePopupForm = ({ zone, onSave, onGenerateGrid, onAdjustPadding }) => {
           <option value="YARD">Sân / Bãi Cảng</option>
         </select>
       </div>
+      {zoneType === 'BUILDING' && (
+        <div>
+          <label style={{ fontSize: '11px', color: '#666', display: 'block' }}>Phân loại công trình:</label>
+          <select value={subType} onChange={e => setSubType(e.target.value)} style={{ width: '100%', padding: '4px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', backgroundColor: '#fff3e0' }}>
+            <option value="GENERAL_BUILDING">Tòa nhà chung</option>
+            <option value="WAREHOUSE">Nhà kho (Warehouse)</option>
+            <option value="TANK">Bồn chứa hóa chất (Tank)</option>
+          </select>
+        </div>
+      )}
       {zoneType === 'REEFER' && (
         <label style={{ fontSize: '11px', color: '#0277bd', display: 'flex', gap: '5px', background: '#e1f5fe', padding: '5px', borderRadius: '4px' }}>
           <input type="checkbox" checked={isVerified} onChange={e => setIsVerified(e.target.checked)} /> Cấp điện liên tục
@@ -401,18 +443,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const setStoreGates = useTaskStore(state => state.setGates);
   const setStoreStorageZones = useTaskStore(state => state.setStorageZones);
   const setStorePortBoundary = useTaskStore(state => state.setPortBoundary);
+  const setStoreFleetRegistry = useTaskStore(state => state.setFleetRegistry);
   const activeTasks = useTaskStore(state => state.tasks);
-
-  const broadcasters = useRealtimeSync(user?.id);
-  const setBroadcasters = useTaskStore(state => state.setBroadcasters);
-  
-  useEffect(() => {
-    if (broadcasters) {
-      setBroadcasters(broadcasters);
-    }
-  }, [broadcasters, setBroadcasters]);
-
-
 
   useEffect(() => {
     setStoreSlots(slots);
@@ -740,6 +772,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
             setInventory(data.inventory || []);
             setActiveRoute([]);
             if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+            if (data.fleetRegistry) setStoreFleetRegistry(data.fleetRegistry);
             setIsDataLoaded(true);
             return true;
           }
@@ -763,6 +796,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
             setInventory(data.inventory || []);
             setActiveRoute([]);
             if (data.portBoundary !== undefined) setPortBoundary(data.portBoundary);
+            if (data.fleetRegistry) setStoreFleetRegistry(data.fleetRegistry);
+            
             setIsDataLoaded(true);
             await set('nexus_port_data_cache', {
                storageZones: data.storageZones || [],
@@ -770,7 +805,8 @@ const FreePortDigitizer = ({ user, isActive }) => {
                gates: data.gates || [],
                inventory: data.inventory || [],
                activeRoute: [],
-               portBoundary: data.portBoundary
+               portBoundary: data.portBoundary,
+               fleetRegistry: data.fleetRegistry || []
             });
           } else {
             const loaded = await loadFromCache();
@@ -810,7 +846,14 @@ const FreePortDigitizer = ({ user, isActive }) => {
            path: z.path.map(p => [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))])
         }));
         
-        const dataToCache = { storageZones: compactZones, slots: compactSlots, gates, inventory, portBoundary };
+        const dataToCache = { 
+           storageZones: compactZones, 
+           slots: compactSlots, 
+           gates, 
+           inventory, 
+           portBoundary,
+           fleetRegistry: useTaskStore.getState().fleetRegistry 
+        };
         await set('nexus_port_data_cache', dataToCache);
       } catch (error) {
         console.warn("Không thể lưu cache IndexedDB:", error);
@@ -834,7 +877,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
         const { fleet } = event.data.payload;
         if (!fleet || !graphData) return;
 
-        import('../services/routingService').then(({ findShortestPath }) => {
+        Promise.resolve().then(() => {
            const tempGraph = new Map(graphData);
            const newFleet = [];
            
@@ -1042,7 +1085,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
              const gateId = gates[Math.floor(Math.random() * gates.length)]?.id;
              
              if (gateId) {
-                import('../services/routingService').then(({ findShortestPath }) => {
+                Promise.resolve().then(() => {
                    let targetSlot = null;
                    
                    // Chọn điểm cuối theo kịch bản trong JSON
@@ -1084,7 +1127,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
                          
                          // Tính ngầm lộ trình thoát ra cổng gần nhất (Lazy pre-computation)
                          setTimeout(() => {
-                             import('../services/routingService').then(async ({ findShortestPath }) => {
+                             Promise.resolve().then(async () => {
                                 let shortestOutPath = [];
                                 let bestGateOutId = gateId;
                                 for (const g of gates) {
@@ -1213,7 +1256,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const handleGenerateGrid = useCallback((zoneId, latLngs, zoneName = 'ZONE', customBearing = null, currentZones = null) => {
     const zonesToUse = currentZones || storageZones;
     const polygonObstacles = zonesToUse
-      .filter(z => z.zoneType === 'BUILDING' || z.zoneType === 'ROAD')
+      .filter(z => (z.zoneType === 'BUILDING' || z.zoneType === 'ROAD') && z.id !== zoneId)
       .map(z => {
          const coords = z.pathLatLngs.map(p => [p.lng, p.lat]);
          if (coords.length >= 3) {
@@ -1308,7 +1351,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
     
     features.forEach(f => {
       if (f.type === 'BUILDING') {
-        newZones.push({ id: f.id, path: f.path, pathLatLngs: f.path.map(p => ({lat: p[0], lng: p[1]})), name: f.name, zoneType: 'BUILDING', isVerified: true });
+        newZones.push({ id: f.id, path: f.path, pathLatLngs: f.path.map(p => ({lat: p[0], lng: p[1]})), name: f.name, zoneType: 'BUILDING', isVerified: true, subType: f.subType, isHazardous: f.isHazardous, properties: f.properties, allowedCargo: f.allowedCargo });
       } else if (f.type === 'ROAD') {
         newZones.push({ id: f.id, path: f.path, pathLatLngs: f.path.map(p => ({lat: p[0], lng: p[1]})), name: f.name, zoneType: 'ROAD', isVerified: true });
       } else if (f.type === 'ROAD_LINE') {
@@ -1328,7 +1371,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
         
         setTimeout(() => {
           filteredNewZones.forEach(z => {
-            if (z.zoneType === 'YARD') {
+            if (z.zoneType === 'YARD' || (z.zoneType === 'BUILDING' && z.subType === 'WAREHOUSE')) {
               handleGenerateGrid(z.id, z.pathLatLngs, z.name, null, finalZones);
             }
           });
@@ -1356,6 +1399,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
     try {
       const dataToSave = { storageZones, slots, gates, inventory, activeRoute, portBoundary };
       await saveMapData(user.id, dataToSave);
+      await logAuditEvent(user.id || 'system', 'UPDATE_ZONE', 'MAP', { message: 'Cập nhật cấu hình bản đồ và kho hàng' });
       try {
           await set('nexus_port_data_cache', dataToSave);
       } catch (cacheErr) {
@@ -1376,7 +1420,10 @@ const FreePortDigitizer = ({ user, isActive }) => {
       // Do not auto-save if there was a fetch error to prevent corrupting DB with empty state
       if (window.__FETCH_ERROR_DO_NOT_SAVE) return;
       if (user && isDataLoaded) {
-        saveMapData(user.id || user.uid, { storageZones, slots, gates, inventory, activeRoute, portBoundary })
+        saveMapData(user.id || user.uid, { 
+           storageZones, slots, gates, inventory, activeRoute, portBoundary, 
+           fleetRegistry: useTaskStore.getState().fleetRegistry 
+        })
           .catch(err => console.error("Lỗi Auto-save DB:", err));
       }
     };
@@ -1413,7 +1460,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
     if (user) {
        try {
            setIsSavingToDB(true);
-           await saveMapData(user.id, { storageZones: [], gates: [], inventory: [], activeRoute: [], portBoundary: null });
+           await saveMapData(user.id, { storageZones: [], gates: [], inventory: [], activeRoute: [], portBoundary: null, fleetRegistry: [] });
            alert('✅ Đã xóa trắng bản đồ và cập nhật lên Cloud DB!');
        } catch(e) {
            alert('❌ Lỗi khi xóa Cloud DB: ' + e.message);
@@ -1590,7 +1637,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
           }, null);
        }
        
-       import('../services/routingService').then(({ findShortestPath }) => {
+       Promise.resolve().then(() => {
           const targetNodeId = slotId;
 
           if (allGates.length > 0) {
@@ -1627,7 +1674,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
                     
                     // Tính ngầm lộ trình ra
                     setTimeout(() => {
-                        import('../services/routingService').then(async ({ findShortestPath }) => {
+                        Promise.resolve().then(async () => {
                            let shortestOutPath = [];
                            let bestGateOutId = gate.id;
                            for (const g of allGates) {
@@ -1725,7 +1772,7 @@ const FreePortDigitizer = ({ user, isActive }) => {
   // Build dynamic graph based on drawn YARD slots and ROAD polygons
   useEffect(() => {
      if (slots.length > 0 || storageZones.filter(z => z.zoneType === 'ROAD' || z.zoneType === 'ROAD_LINE').length > 0 || gates.length > 0) {
-        import('../services/routingService').then(({ buildDynamicGraph }) => {
+        Promise.resolve().then(() => {
            setGraphData(buildDynamicGraph(storageZones, slots, gates, portBoundary));
         });
      }
@@ -1760,14 +1807,19 @@ const FreePortDigitizer = ({ user, isActive }) => {
   const getPolygonStyle = useCallback((zone) => {
     if (!zone.isVerified) return { color: '#9e9e9e', fillColor: '#ffffff', fillOpacity: 0.2, weight: 2, dashArray: '5, 5' };
     switch(zone.zoneType) {
-      case 'BUILDING': return { color: '#000000', fillColor: '#424242', fillOpacity: 0.7, weight: 2 };
+      case 'BUILDING': 
+        if (zone.subType === 'TANK') return { color: '#b71c1c', fillColor: '#ff9800', fillOpacity: 0.85, weight: 2 }; // Cam viền đỏ
+        if (zone.subType === 'WAREHOUSE') return { color: '#1565c0', fillColor: '#42a5f5', fillOpacity: 0.75, weight: 2 }; // Xanh dương
+        return { color: '#000000', fillColor: '#424242', fillOpacity: 0.7, weight: 2 };
       case 'ROAD': return { color: '#757575', fillColor: '#9e9e9e', fillOpacity: 0.4, weight: 1, dashArray: '4,4' };
       case 'CUSTOMS': return { color: '#8e24aa', fillColor: '#e1bee7', fillOpacity: 0.4, weight: 3, dashArray: '5, 5' };
       case 'YARD': 
         if (zone.subType === 'COVERED') return { color: '#616161', fillColor: '#9e9e9e', fillOpacity: 0.4, weight: 2, dashArray: '2, 6' };
         if (zone.allowedCargo && zone.allowedCargo.includes('WOOD')) return { color: '#4e342e', fillColor: '#8d6e63', fillOpacity: 0.4, weight: 2 };
         return { color: '#2e7d32', fillColor: '#81c784', fillOpacity: 0.4, weight: 2 };
-      case 'DANGEROUS': return { color: '#c62828', fillColor: '#ffcccc', fillOpacity: 0.5, weight: 3 };
+      case 'DANGEROUS': 
+        if (zone.subType === 'TANK_ADJACENT') return { color: '#b71c1c', fillColor: '#f44336', fillOpacity: 0.6, weight: 4, dashArray: '10, 5' }; // Bãi sát TANK cảnh báo mức cao
+        return { color: '#c62828', fillColor: '#ffcccc', fillOpacity: 0.5, weight: 3 };
       case 'REEFER': return { color: '#1565c0', fillColor: '#cce5ff', fillOpacity: 0.5, weight: 3 };
       case 'METAL': return { color: '#424242', fillColor: '#e0e0e0', fillOpacity: 0.5, weight: 3 };
       case 'WOOD_COAL': return { color: '#4e342e', fillColor: '#d7ccc8', fillOpacity: 0.5, weight: 3 };
@@ -1785,8 +1837,88 @@ const FreePortDigitizer = ({ user, isActive }) => {
 
   useVehicleAnimation();
 
+  // --- SMART DISPATCHER ---
+  const taskQueue = useTaskStore(state => state.taskQueue);
+  const dequeueTask = useTaskStore(state => state.dequeueTask);
+  const fleetRegistry = useTaskStore(state => state.fleetRegistry);
+  const updateVehicle = useTaskStore(state => state.updateVehicle);
+  const addTask = useTaskStore(state => state.addTask);
+  const broadcasters = useTaskStore(state => state.broadcasters);
+
+  useEffect(() => {
+    if (!graphData || taskQueue.length === 0) return;
+    
+    // Simple Dispatcher: process first task
+    const task = taskQueue[0];
+    if (!task) return;
+    
+    const tempGraph = new Map(graphData);
+    const nodes = Array.from(tempGraph.values());
+    
+    Promise.resolve().then(() => {
+        if (task.type === 'INBOUND' || task.type === 'OUTBOUND') {
+            // External Tractor logic (no fleet vehicle assigned)
+            let firstLegTarget = task.type === 'INBOUND' ? task.gateId : task.targetSlotId;
+            let secondLegTarget = task.type === 'INBOUND' ? task.targetSlotId : task.gateId;
+            
+            let pathArray = findShortestPath(firstLegTarget, secondLegTarget, tempGraph);
+            if (pathArray && pathArray.length > 0) {
+                dequeueTask(task.id);
+                const activeTask = {
+                  ...task,
+                  path: pathArray,
+                  status: 'EN_ROUTE_TO_SLOT'
+                };
+                addTask(activeTask);
+            } else {
+                console.warn("Dispatcher: Cannot find path for external tractor", task.id);
+                dequeueTask(task.id); // Drop impossible task
+            }
+        } else if (task.type === 'SUPPORT') {
+            // Internal Yard Support logic (requires IDLE fleet vehicle)
+            const idleVehicles = fleetRegistry.filter(v => v.status === 'IDLE');
+            if (idleVehicles.length === 0) return; // Wait for available vehicle
+            
+            const vehicle = idleVehicles[0]; // Can be optimized for closest vehicle
+            
+            // Find closest graph node to vehicle current position
+            let vehicleNodeId = null;
+            let minVDist = Infinity;
+            for (const n of nodes) {
+               const dist = Math.pow(n.coordinates[0] - vehicle.currentPos[0], 2) + Math.pow(n.coordinates[1] - vehicle.currentPos[1], 2);
+               if (dist < minVDist) {
+                  minVDist = dist;
+                  vehicleNodeId = n.id;
+               }
+            }
+            
+            let pathArray = [];
+            if (vehicleNodeId && vehicleNodeId !== task.targetSlotId) {
+                const route = findShortestPath(vehicleNodeId, task.targetSlotId, tempGraph);
+                if (route) pathArray = route;
+            }
+            
+            if (pathArray.length > 0) {
+                updateVehicle(vehicle.id, { status: 'MOVING' });
+                dequeueTask(task.id);
+                
+                const activeTask = {
+                  ...task,
+                  assignedVehicleId: vehicle.id,
+                  path: pathArray,
+                  status: 'EN_ROUTE_TO_SLOT'
+                };
+                addTask(activeTask);
+            } else {
+                console.warn("Dispatcher: Cannot find path for support task", task.id);
+                dequeueTask(task.id); // Drop impossible task
+            }
+        }
+    });
+  }, [taskQueue, fleetRegistry, graphData, dequeueTask, updateVehicle, addTask, broadcasters]);
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', margin: 0, padding: 0 }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', margin: 0, padding: 0, overflow: 'hidden' }}>
       <MapContainer preferCanvas={true} center={defaultCenter} zoom={16} maxZoom={22} ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 0 }}>
           <MapResizer isActive={isActive} />
         <ZoomTracker onZoomChange={setCurrentZoom} />
@@ -1842,6 +1974,22 @@ const FreePortDigitizer = ({ user, isActive }) => {
                   />
                 );
               })}
+              {/* Vẽ xe nhàn rỗi (IDLE) từ Fleet Registry */}
+              {fleetRegistry.map(vehicle => {
+                if (vehicle.status !== 'IDLE' || !vehicle.currentPos) return null;
+                return (
+                  <Marker 
+                     key={`idle-${vehicle.id}`} 
+                     position={vehicle.currentPos} 
+                     icon={staticTruckIcon}
+                     zIndexOffset={900}
+                  >
+                     <Tooltip permanent direction="top" opacity={0.8}>
+                       <span style={{ fontWeight: 'bold', fontSize: '10px', color: '#10b981' }}>{vehicle.id} (IDLE)</span>
+                     </Tooltip>
+                  </Marker>
+                );
+              })}
               {/* Vẽ xe từ Task Store */}
               {activeTasks.map(task => {
                 if (!task.path || task.currentIndex >= task.path.length) return null;
@@ -1862,9 +2010,9 @@ const FreePortDigitizer = ({ user, isActive }) => {
                 return (
                   <RotatedMarker 
                      key={task.id} 
-                     id={task.truckPlate}
+                     id={task.type === 'SUPPORT' ? (task.assignedVehicleId || 'AGV') : task.truckPlate}
                      position={currentPos} 
-                     icon={staticTruckIcon} 
+                     icon={task.type === 'SUPPORT' ? staticRtgIcon : staticTruckIcon} 
                      heading={heading}
                      progress={task.progress}
                   />

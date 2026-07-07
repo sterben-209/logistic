@@ -70,8 +70,12 @@ const CanvasSlotLayer = ({ slots, isLightMap, onSlotClick, zoneType, subType, sl
             const bWest = bounds.getWest(), bEast = bounds.getEast();
 
             const getBaseColor = (slot) => {
-              if (slot && slot.isCovered) return '#616161';
+              if (slot && slot.isCovered && zoneType !== 'BUILDING') return '#616161';
               switch(zoneType) {
+                case 'BUILDING':
+                  if (subType === 'TANK') return '#ff9800'; // Cam
+                  if (subType === 'WAREHOUSE') return '#42a5f5'; // Xanh
+                  return '#424242';
                 case 'CUSTOMS': return '#8e24aa';
                 case 'REEFER': return '#1565c0';
                 case 'DANGEROUS': return '#c62828';

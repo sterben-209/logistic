@@ -5,6 +5,7 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
     [out:json][timeout:25];
     (
       way["building"](${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]});
+      way["industrial"="tank"](${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]});
       node["barrier"="gate"](${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]});
       way["highway"](${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]});
       way["landuse"="industrial"](${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]});
@@ -18,12 +19,44 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
     out skel qt;
   `;
 
-  const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+  const endpoints = [
+    `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
+    `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
+    `https://overpass.osm.ch/api/interpreter?data=${encodeURIComponent(query)}`
+  ];
+  
+  let data = null;
+  let lastError = null;
+
+  for (const url of endpoints) {
+    try {
+      console.log("Đang thử fetch từ:", url.split('?')[0]);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+      
+      const text = await response.text();
+      // Bắt lỗi Gateway Timeout trả về HTML thay vì JSON
+      if (text.trim().startsWith('<')) {
+        throw new SyntaxError("Response is HTML/XML, not JSON (Probably Gateway Timeout)");
+      }
+      
+      data = JSON.parse(text);
+      break; // Thành công thì thoát vòng lặp
+    } catch (e) {
+      console.warn("Overpass API endpoint failed:", url.split('?')[0], e.message);
+      lastError = e;
+    }
+  }
+
+  if (!data) {
+    console.error("Tất cả các server Overpass đều thất bại:", lastError);
+    // Trả về mảng rỗng thay vì làm crash app
+    return [];
+  }
   
   try {
-    const response = await fetch(url);
-    const data = await response.json();
-    
     const nodes = {};
     const features = [];
     const roadLineStrings = []; // Lưu trữ tim đường để tạo block tự động
@@ -47,11 +80,55 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
         const path = el.nodes.map(nodeId => nodes[nodeId]).filter(Boolean);
         if (path.length >= 2) {
           
-          if (el.tags.building && path.length >= 3) {
+          if ((el.tags.building || el.tags.industrial === 'tank') && path.length >= 3) {
             const poly = turf.polygon([[...path.map(p => [p[1], p[0]]), [path[0][1], path[0][0]]]]);
             const area = turf.area(poly);
             
-            if (area > 50 && area < 30000) {
+            // Logic phân tách WAREHOUSE và TANK (Dựa trên Tag)
+            let subType = 'GENERAL_BUILDING';
+            let isHazardous = false;
+
+            if (el.tags['building'] === 'tank' || el.tags['industrial'] === 'tank') {
+              subType = 'TANK';
+              isHazardous = true;
+            } else if (el.tags['building'] === 'warehouse' || el.tags['building'] === 'storage') {
+              subType = 'WAREHOUSE';
+              isHazardous = false;
+            }
+
+            // AI DỰ ĐOÁN HÌNH DÁNG (Shape Analysis) - Khắc phục việc OSM lười tag!
+            if (subType === 'GENERAL_BUILDING') {
+              try {
+                // Tạo một LineString để tính chu vi
+                const line = turf.lineString([...path.map(p => [p[1], p[0]]), [path[0][1], path[0][0]]]);
+                const perimeter = turf.length(line, { units: 'meters' });
+                
+                if (perimeter > 0) {
+                  // Công thức Circularity (Độ tròn): 4 * PI * Area / (Perimeter^2)
+                  // Tròn hoàn hảo = 1. Vuông = 0.785. Chữ nhật = < 0.7. Bát giác (OSM vẽ) ~ 0.94
+                  const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+                  
+                  if (circularity > 0.85) {
+                    subType = 'TANK';
+                    isHazardous = true;
+                    console.log(`AI Shape Detect: Đã nhận diện 1 Bồn chứa (TANK) bằng hình học. Độ tròn: ${circularity.toFixed(2)}`);
+                  } else if (area > 2000 && circularity < 0.75) {
+                    // Kho bãi thường rất lớn và vuông vức / chữ nhật dài
+                    subType = 'WAREHOUSE';
+                  }
+                }
+              } catch (e) {
+                // Bỏ qua nếu lỗi tính toán hình học
+              }
+            }
+
+            let allowedCargo = [];
+            if (subType === 'WAREHOUSE') {
+              allowedCargo = ['ELECTRONICS'];
+            }
+
+            // Nếu OSM chỉ ghi chung chung building thì áp dụng luật chia block/bldg cũ
+            if (subType === 'GENERAL_BUILDING' && area > 50 && area < 30000) {
                features.push({
                 id: `osm-yard-${el.id}`,
                 type: 'YARD',
@@ -62,7 +139,11 @@ export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
               features.push({
                 id: `osm-bldg-${el.id}`,
                 type: 'BUILDING',
-                name: el.tags.name || el.tags.ref || 'Tòa nhà / Kho',
+                subType: subType,
+                isHazardous: isHazardous,
+                allowedCargo: allowedCargo,
+                properties: { ...el.tags, subType, isHazardous, allowedCargo },
+                name: el.tags.name || el.tags.ref || (subType === 'TANK' ? 'Bồn chứa hóa chất' : (subType === 'WAREHOUSE' ? 'Nhà kho / Storage' : 'Tòa nhà')),
                 path: path
               });
             }
