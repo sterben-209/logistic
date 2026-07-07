@@ -33,7 +33,10 @@ export default function useVehicleAnimation() {
            const dx = myNextPos[1] - otherPos[1];
            const dy = myNextPos[0] - otherPos[0];
            if (dx*dx + dy*dy < SAFE_DISTANCE_SQ) { 
-               return false; // I yield (I stop)
+               // Deadlock prevention: tie-breaker based on ID so they don't mutually yield
+               if (task.id > other.id) {
+                   return false; // I yield (I stop)
+               }
            }
         }
         return true;
