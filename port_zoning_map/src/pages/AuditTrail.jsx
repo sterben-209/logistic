@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { get } from 'idb-keyval';
+import { get, set } from 'idb-keyval';
 import { generateHash } from '../services/auditService';
 
 const AuditTrail = () => {
@@ -97,6 +97,22 @@ const AuditTrail = () => {
     }
   };
 
+  const clearLogs = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử Audit? Hành động này không thể hoàn tác.")) return;
+    setLoading(true);
+    try {
+      await set('nexus_audit_logs', []);
+      setLogs([]);
+      setVerificationResult(null);
+      setInvalidRowId(null);
+      setVerificationMessage('Đã xóa toàn bộ lịch sử hệ thống.');
+    } catch (error) {
+      console.error("Lỗi khi xóa lịch sử:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatHash = (hash) => {
     if (!hash) return '';
     return hash.length > 10 ? `0x${hash.substring(0, 8)}...` : hash;
@@ -135,7 +151,15 @@ const AuditTrail = () => {
             className="px-6 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 transition-colors shadow-md flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-sm">shield</span>
-            Kiểm tra toàn vẹn chuỗi
+            Kiểm tra toàn vẹn
+          </button>
+          <button 
+            onClick={clearLogs}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-error text-white font-medium hover:bg-error/90 transition-colors shadow-md flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-sm">delete</span>
+            Xóa lịch sử
           </button>
         </div>
       </div>
