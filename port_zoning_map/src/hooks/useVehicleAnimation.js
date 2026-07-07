@@ -55,47 +55,91 @@ export default function useVehicleAnimation() {
         if (task.currentIndex >= pathLength - 1) {
           
           if (task.type === 'SUPPORT') {
-            // AGV reached the slot, it's done. Wait for Tractor to finish.
-            state.updateTask(task.id, { status: 'COMPLETED', progress: 100 });
-            if (task.assignedVehicleId) {
-                state.updateVehicle(task.assignedVehicleId, { 
-                  status: 'IDLE', 
-                  currentPos: task.path[task.currentIndex] 
-                });
+            const tractor = tasks.find(t => t.id === task.tractorId);
+            if (tractor && tractor.status === 'WAITING_FOR_SUPPORT') {
+                // Tractor is already waiting here. We both arrived! Start handling.
+                state.updateTask(task.id, { status: 'HANDLING_SUPPORT', progress: 100 });
+                state.updateTask(tractor.id, { status: 'HANDLING' });
+                
+                setTimeout(() => {
+                    const currentTractor = useTaskStore.getState().tasks.find(t => t.id === tractor.id);
+                    if (currentTractor) {
+                      const reversedPath = [...currentTractor.path].reverse();
+                      state.updateTask(tractor.id, { 
+                        status: 'EN_ROUTE_TO_GATE',
+                        path: reversedPath,
+                        currentIndex: 0,
+                        progress: 0
+                      });
+                    }
+                    
+                    state.updateTask(task.id, { status: 'COMPLETED' });
+                    if (task.assignedVehicleId) {
+                        state.updateVehicle(task.assignedVehicleId, { 
+                          status: 'IDLE', 
+                          currentPos: task.path[task.path.length - 1] 
+                        });
+                    }
+                    setTimeout(() => state.removeTask(task.id), 500);
+                }, 1500);
+            } else {
+                // We arrived first. Wait for tractor.
+                state.updateTask(task.id, { status: 'WAITING_FOR_TRACTOR', progress: 100 });
             }
-            setTimeout(() => state.removeTask(task.id), 500);
             return;
           }
 
-          state.updateTask(task.id, { status: 'HANDLING' });
-          // Log Crane Worker Action
-          const craneWorker = (task.cargoType === 'HAZARDOUS' || task.cargoType === 'CHEMICAL') 
-            ? MOCK_WORKERS.CRANE_HAZARDOUS 
-            : MOCK_WORKERS.CRANE_DRY;
-            
-          logAuditEvent(
-            craneWorker.name, 
-            'YARD_DROP_CONFIRMED', 
-            task.containerId, 
-            { 
-              workerWalletAddress: craneWorker.wallet,
-              status: "Verified on Edge Device",
-              allocatedZone: task.targetZoneId
-            }
-          );
+          // For INBOUND / OUTBOUND (Tractor)
+          const supportTask = tasks.find(t => t.type === 'SUPPORT' && t.tractorId === task.id);
+          
+          if (!supportTask || supportTask.status === 'WAITING_FOR_TRACTOR') {
+             // Support is already here (or doesn't exist). We both arrived! Start handling.
+             state.updateTask(task.id, { status: 'HANDLING' });
+             if (supportTask) state.updateTask(supportTask.id, { status: 'HANDLING_SUPPORT' });
+             
+             // Log Crane Worker Action
+             const craneWorker = (task.cargoType === 'HAZARDOUS' || task.cargoType === 'CHEMICAL') 
+               ? MOCK_WORKERS.CRANE_HAZARDOUS 
+               : MOCK_WORKERS.CRANE_DRY;
+               
+             logAuditEvent(
+               craneWorker.name, 
+               'YARD_DROP_CONFIRMED', 
+               task.containerId, 
+               { 
+                 workerWalletAddress: craneWorker.wallet,
+                 status: "Verified on Edge Device",
+                 allocatedZone: task.targetZoneId
+               }
+             );
 
-          setTimeout(() => {
-            const currentTask = useTaskStore.getState().tasks.find(t => t.id === task.id);
-            if (currentTask) {
-              const reversedPath = [...currentTask.path].reverse();
-              state.updateTask(task.id, { 
-                status: 'EN_ROUTE_TO_GATE',
-                path: reversedPath,
-                currentIndex: 0,
-                progress: 0
-              });
-            }
-          }, 1500); // Reduce handling time from 3s to 1.5s
+             setTimeout(() => {
+                const currentTractor = useTaskStore.getState().tasks.find(t => t.id === task.id);
+                if (currentTractor) {
+                  const reversedPath = [...currentTractor.path].reverse();
+                  state.updateTask(task.id, { 
+                    status: 'EN_ROUTE_TO_GATE',
+                    path: reversedPath,
+                    currentIndex: 0,
+                    progress: 0
+                  });
+                }
+                
+                if (supportTask) {
+                    state.updateTask(supportTask.id, { status: 'COMPLETED' });
+                    if (supportTask.assignedVehicleId) {
+                        state.updateVehicle(supportTask.assignedVehicleId, { 
+                          status: 'IDLE', 
+                          currentPos: supportTask.path[supportTask.path.length - 1] 
+                        });
+                    }
+                    setTimeout(() => state.removeTask(supportTask.id), 500);
+                }
+             }, 1500);
+          } else {
+             // Support hasn't arrived yet. Wait for support.
+             state.updateTask(task.id, { status: 'WAITING_FOR_SUPPORT', progress: 100 });
+          }
         } else {
           // Jump 4 nodes per tick to increase speed 4x without CPU overhead
           let nextIndex = Math.min(task.currentIndex + 4, pathLength - 1);
