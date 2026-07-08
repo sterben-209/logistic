@@ -1470,89 +1470,82 @@ const FreePortDigitizer = ({ user, isActive }) => {
   useEffect(() => {
     if (!graphData || taskQueue.length === 0) return;
     
-    // Simple Dispatcher: process first task
-    const task = taskQueue[0];
-    if (!task) return;
-    
     const tempGraph = new Map(graphData);
     const nodes = Array.from(tempGraph.values());
     
-    Promise.resolve().then(() => {
-        if (task.type === 'INBOUND' || task.type === 'OUTBOUND') {
-            // External Tractor logic (no fleet vehicle assigned)
-            let firstLegTarget = task.type === 'INBOUND' ? task.gateId : task.targetSlotId;
-            let secondLegTarget = task.type === 'INBOUND' ? task.targetSlotId : task.gateId;
-            
-            let pathArray = findShortestPath(firstLegTarget, secondLegTarget, tempGraph);
-            if (pathArray && pathArray.length > 0) {
-                dequeueTask(task.id);
-                const activeTask = {
-                  ...task,
-                  path: pathArray,
-                  status: 'EN_ROUTE_TO_SLOT'
-                };
-                addTask(activeTask);
-            } else {
-                console.warn("Dispatcher: Cannot find path for external tractor", task.id);
-                dequeueTask(task.id); // Drop impossible task
-            }
-        } else if (task.type === 'SUPPORT') {
-            // Internal Yard Support logic (requires IDLE fleet vehicle)
-            const idleVehicles = fleetRegistry.filter(v => v.status === 'IDLE');
-            if (idleVehicles.length === 0) return; // Wait for available vehicle
-            
-            // Find closest idle vehicle to target slot
-            let targetCoords = tempGraph.get(task.targetSlotId)?.coordinates;
-            let bestVehicle = null;
-            let minDistanceToTarget = Infinity;
-            
-            if (targetCoords) {
-                for (const v of idleVehicles) {
-                    if (!v.currentPos) continue;
-                    const distToTarget = Math.pow(targetCoords[0] - v.currentPos[0], 2) + Math.pow(targetCoords[1] - v.currentPos[1], 2);
-                    if (distToTarget < minDistanceToTarget) {
-                        minDistanceToTarget = distToTarget;
-                        bestVehicle = v;
-                    }
-                }
-            }
-            
-            const vehicle = bestVehicle || idleVehicles[0];
-            if (!vehicle || !vehicle.currentPos) return;
-            
-            // Find closest graph node to the chosen vehicle's current position
-            let vehicleNodeId = null;
-            let minVDist = Infinity;
-            for (const n of nodes) {
-               const dist = Math.pow(n.coordinates[0] - vehicle.currentPos[0], 2) + Math.pow(n.coordinates[1] - vehicle.currentPos[1], 2);
-               if (dist < minVDist) {
-                  minVDist = dist;
-                  vehicleNodeId = n.id;
-               }
-            }
-            
-            let pathArray = [];
-            if (vehicleNodeId && vehicleNodeId !== task.targetSlotId) {
-                const route = findShortestPath(vehicleNodeId, task.targetSlotId, tempGraph);
-                if (route) pathArray = route;
-            }
-            
-            if (pathArray.length > 0) {
-                updateVehicle(vehicle.id, { status: 'MOVING' });
-                dequeueTask(task.id);
-                
-                const activeTask = {
-                  ...task,
-                  assignedVehicleId: vehicle.id,
-                  path: pathArray,
-                  status: 'EN_ROUTE_TO_SLOT'
-                };
-                addTask(activeTask);
-            } else {
-                console.warn("Dispatcher: Cannot find path for support task", task.id);
-                dequeueTask(task.id); // Drop impossible task
-            }
+    // Track vehicles assigned this tick to avoid double-assigning
+    const assignedVehicleIds = new Set();
+    const tasksToDispatch = [];
+    
+    for (const task of taskQueue) {
+      if (task.type === 'INBOUND' || task.type === 'OUTBOUND') {
+        let firstLegTarget = task.type === 'INBOUND' ? task.gateId : task.targetSlotId;
+        let secondLegTarget = task.type === 'INBOUND' ? task.targetSlotId : task.gateId;
+        
+        let pathArray = findShortestPath(firstLegTarget, secondLegTarget, tempGraph);
+        if (pathArray && pathArray.length > 0) {
+          tasksToDispatch.push({ task, pathArray, type: 'tractor' });
+        } else {
+          console.warn("Dispatcher: Cannot find path for external tractor", task.id);
+          tasksToDispatch.push({ task, type: 'drop' });
         }
+      } else if (task.type === 'SUPPORT') {
+        const idleVehicles = fleetRegistry.filter(v => v.status === 'IDLE' && !assignedVehicleIds.has(v.id));
+        if (idleVehicles.length === 0) continue; // Skip, don't block queue
+        
+        let targetCoords = tempGraph.get(task.targetSlotId)?.coordinates;
+        let bestVehicle = null;
+        let minDist = Infinity;
+        
+        if (targetCoords) {
+          for (const v of idleVehicles) {
+            if (!v.currentPos) continue;
+            const d = Math.pow(targetCoords[0] - v.currentPos[0], 2) + Math.pow(targetCoords[1] - v.currentPos[1], 2);
+            if (d < minDist) { minDist = d; bestVehicle = v; }
+          }
+        }
+        
+        const vehicle = bestVehicle || idleVehicles[0];
+        if (!vehicle || !vehicle.currentPos) continue;
+        
+        let vehicleNodeId = null;
+        let minVDist = Infinity;
+        for (const n of nodes) {
+          const dist = Math.pow(n.coordinates[0] - vehicle.currentPos[0], 2) + Math.pow(n.coordinates[1] - vehicle.currentPos[1], 2);
+          if (dist < minVDist) { minVDist = dist; vehicleNodeId = n.id; }
+        }
+        
+        let pathArray = [];
+        if (vehicleNodeId && vehicleNodeId !== task.targetSlotId) {
+          const route = findShortestPath(vehicleNodeId, task.targetSlotId, tempGraph);
+          if (route) pathArray = route;
+        }
+        
+        if (pathArray.length > 0) {
+          assignedVehicleIds.add(vehicle.id);
+          tasksToDispatch.push({ task, pathArray, type: 'support', vehicle });
+        } else {
+          console.warn("Dispatcher: Cannot find path for support task", task.id);
+          tasksToDispatch.push({ task, type: 'drop' });
+        }
+      }
+    }
+    
+    if (tasksToDispatch.length === 0) return;
+    
+    Promise.resolve().then(() => {
+      for (const item of tasksToDispatch) {
+        if (item.type === 'drop') {
+          dequeueTask(item.task.id);
+        } else if (item.type === 'tractor') {
+          dequeueTask(item.task.id);
+          addTask({ ...item.task, path: item.pathArray, status: 'EN_ROUTE_TO_SLOT' });
+        } else if (item.type === 'support') {
+          updateVehicle(item.vehicle.id, { status: 'MOVING' });
+          dequeueTask(item.task.id);
+          addTask({ ...item.task, assignedVehicleId: item.vehicle.id, path: item.pathArray, status: 'EN_ROUTE_TO_SLOT' });
+        }
+      }
     });
   }, [taskQueue, fleetRegistry, graphData, dequeueTask, updateVehicle, addTask, broadcasters]);
 
