@@ -232,6 +232,7 @@
   CanvasSlotLayer.
   - FreePortDigitizer.jsx: Container bản đồ chính, tích hợp react-leaflet.
     - Tương tác Zustand: Đọc tasks, fleetRegistry; dispatch addTask, updateTaskPosition, removeTask.
+    - Smart Dispatcher: Xử lý taskQueue tuần tự - chỉ lấy và xử lý một task tại một thời điểm.
     - Render: Sử dụng các lớp TileLayer, GeoJson (cho zones), Marker (cho gates/buildings), và CanvasSlotLayer (cho slots). Xử lý sự kiện người dùng
   trên bản đồ (click, vẽ polygon, drag-drop container).
 
