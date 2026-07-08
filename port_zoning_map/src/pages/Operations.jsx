@@ -16,7 +16,7 @@ const Operations = () => {
   const removeVehicle = useTaskStore(state => state.removeVehicle);
 
   const transitContainers = fleetData
-    .filter(v => v.status !== 'COMPLETED')
+    .filter(v => v.status !== 'COMPLETED' && v.type === 'INBOUND')
     .map(v => {
       const isImport = v.type === 'INBOUND';
       return {

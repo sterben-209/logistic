@@ -155,34 +155,54 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   return (
     <div style={{ 
       position: 'absolute', 
-      bottom: 0, 
-      left: '50%', 
-      transform: `translateX(-50%) translateY(${isOpen ? '0' : 'calc(100% - 54px)'})`, 
+      top: 0, 
+      right: 0, 
       zIndex: 1000, 
-      background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
+      background: isOpen ? 'linear-gradient(145deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)' : 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)',
       backdropFilter: 'blur(16px)',
       WebkitBackdropFilter: 'blur(16px)',
       border: '1px solid rgba(255, 255, 255, 0.1)',
-      borderBottom: 'none',
-      padding: '16px 24px 24px 24px', 
-      borderRadius: '24px 24px 0 0', 
-      boxShadow: '0 -10px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)', 
-      width: '480px', 
+      borderRight: 'none',
+      padding: isOpen ? '16px 20px 24px 20px' : '0', 
+      borderRadius: '16px 0 0 16px', 
+      boxShadow: '-6px 0 30px rgba(0,0,0,0.4)', 
+      width: isOpen ? '380px' : '48px', 
       fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
-      maxHeight: '75vh', 
+      height: '100%',
+      boxSizing: 'border-box',
       display: 'flex', 
       flexDirection: 'column', 
-      transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-      color: '#f8fafc'
+      transition: 'width 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+      color: '#f8fafc',
+      overflowX: 'hidden',
+      overflowY: isOpen ? 'auto' : 'hidden'
     }}>
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        style={{ cursor: 'pointer', textAlign: 'center', paddingBottom: '12px', borderBottom: isOpen ? '1px solid rgba(255,255,255,0.05)' : 'none', marginBottom: isOpen ? '20px' : '0' }}
+        style={{ 
+          cursor: 'pointer', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: isOpen ? 'auto' : '100%',
+          paddingBottom: isOpen ? '12px' : '0', 
+          borderBottom: isOpen ? '1px solid rgba(255,255,255,0.05)' : 'none', 
+          marginBottom: isOpen ? '16px' : '0',
+          writingMode: isOpen ? 'horizontal-tb' : 'vertical-rl',
+          textOrientation: isOpen ? 'mixed' : 'mixed',
+          whiteSpace: 'nowrap'
+        }}
       >
-        <div style={{ width: '48px', height: '5px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', margin: '0 auto 12px auto', transition: 'background 0.2s' }} />
-        <h2 style={{ fontSize: '1.05rem', fontWeight: '600', margin: 0, letterSpacing: '0.01em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-          <span style={{ color: '#38bdf8' }}>⚡</span> BẢNG ĐIỀU PHỐI <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem', marginLeft: '4px' }}>{activeTasks.length} đang chạy</span>
-        </h2>
+        {isOpen ? (
+          <>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%' }}>
+              <span style={{ color: '#38bdf8' }}>⚡</span> ĐIỀU PHỐI <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem' }}>{activeTasks.length}</span>
+              <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.5 }}>✕</span>
+            </h2>
+          </>
+        ) : (
+          <span style={{ fontSize: '0.8rem', fontWeight: '600', letterSpacing: '0.1em', color: '#38bdf8', padding: '12px 0' }}>⚡ ĐIỀU PHỐI ({activeTasks.length})</span>
+        )}
       </div>
       
       {isOpen && (
