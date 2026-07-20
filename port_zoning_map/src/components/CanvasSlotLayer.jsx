@@ -1,8 +1,50 @@
+/**
+ * CanvasSlotLayer Component
+ * 
+ * High-performance canvas-based rendering layer for storage slot visualization on Leaflet maps.
+ * 
+ * Key Features:
+ * - Canvas overlay rendering (not DOM) for handling thousands of slots without performance degradation
+ * - Optimized WebGL-style projection calculations calibrated against Leaflet's native projection
+ * - Hierarchical spatial culling (viewport bounds → sub-pixel skipping) for efficient rendering
+ * - Dynamic batching: groups slots by color and opacity for minimized draw calls
+ * - Ray-casting point-in-polygon hit testing for hover and click detection
+ * - Real-time slot occupancy visualization (opacity-based stacking indication)
+ * - Zone-type color coding (BUILDING, CUSTOMS, REEFER, DANGEROUS, YARD, etc.)
+ * 
+ * Performance Optimizations:
+ * - Flat Float64Array for vertex storage (no object allocation per vertex)
+ * - Inline projection math (x = kLng * lng + calX) instead of function calls
+ * - Sub-pixel culling: skips rendering if bounding box < 3x3 pixels
+ * - Throttled hover detection via requestAnimationFrame
+ * - Double-click zoom disabled to prevent map zoom conflicts during slot clicks
+ * 
+ * Events:
+ * - Emits custom 'slotHover' event with slot details on hover
+ * - Calls onSlotClick callback when a slot is clicked
+ * 
+ * @component
+ * @param {Object} props - Component props
+ * @param {Array} props.slots - Array of slot features with path (polygon coords) and status
+ * @param {Boolean} props.isLightMap - Theme flag (false=dark, true=light) for color scheme
+ * @param {Function} props.onSlotClick - Callback fired when user clicks a slot
+ * @param {String} props.zoneType - Type of zone (BUILDING, CUSTOMS, REEFER, etc.)
+ * @param {String} props.subType - Zone subtype (TANK, WAREHOUSE, COVERED, etc.)
+ * @param {Object} props.slotCounts - Map of slotId → container count for occupancy visualization
+ * @param {Array} props.allowedCargo - List of allowed cargo types for color customization
+ * @returns {null} - Returns null (canvas renders to Leaflet overlay pane directly)
+ */
 import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-// Ray-Casting algorithm for point-in-polygon hit testing
+/**
+ * Ray-Casting algorithm for point-in-polygon hit testing
+ * Uses the winding number method to determine if a point lies inside a polygon
+ * @param {Array<number>} point - [lat, lng] coordinates to test
+ * @param {Array<Array<number>>} vs - Array of polygon vertices [lat, lng]
+ * @returns {Boolean} - True if point is inside polygon, false otherwise
+ */
 const pointInPolygon = (point, vs) => {
     let x = point[0], y = point[1];
     let inside = false;

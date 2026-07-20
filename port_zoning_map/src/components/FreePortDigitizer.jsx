@@ -1,3 +1,39 @@
+/**
+ * FreePortDigitizer Component
+ * 
+ * Main interactive map interface for port management and logistics operations.
+ * 
+ * Key Features:
+ * - Interactive Leaflet map with Geoman drawing tools for zone definition
+ * - Real-time vessel tracking and vehicle animation
+ * - Storage zone management with automatic slot grid generation
+ * - Container inventory management and stacking visualization
+ * - Task creation and fleet management interface
+ * - Audit trail logging for all operations
+ * - Offline data persistence using IndexedDB
+ * - Multi-layer base map (satellite, street, terrain)
+ * 
+ * Integrated Components:
+ * - GeomanControl: Drawing polygon zones and routes
+ * - MapController: Camera control and navigation
+ * - LayerTracker: Track active base map layer
+ * - ZoomTracker: Monitor zoom level changes
+ * - HoverInfoPanel: Display slot contents on hover
+ * - CanvasSlotLayer: High-performance slot visualization
+ * - TaskTab: Task management and vehicle controls
+ * 
+ * Data Flow:
+ * - Zones are drawn and stored with geographic boundaries
+ * - Slots are automatically generated within zones using Turf.js
+ * - Containers are tracked in inventory with location (zone/bay/row/tier)
+ * - Tasks are created to move containers between locations
+ * - Vehicles execute tasks and animation shows movement on map
+ * 
+ * @component
+ * @param {Object} props - Component props
+ * @param {Boolean} props.isActive - Whether the map is currently active/visible
+ * @returns {JSX.Element} Interactive port management interface
+ */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import * as turf from '@turf/turf';
 import {
@@ -70,6 +106,22 @@ L.Icon.Default.mergeOptions({
 
 const defaultCenter = [10.766, 106.775]; 
 
+/**
+ * GeomanControl Component
+ * 
+ * Integrates Leaflet-Geoman drawing tools into the map.
+ * Allows users to draw polygons (zones), polylines (routes), and markers (gates).
+ * 
+ * Callbacks:
+ * - onPolygonComplete: Called when user finishes drawing a polygon or rectangle
+ * - onPolylineComplete: Called when user finishes drawing a line/route
+ * - onMarkerComplete: Called when user places a marker
+ * 
+ * @param {Object} props - Component props
+ * @param {Function} props.onPolygonComplete - Handler for completed polygon
+ * @param {Function} props.onPolylineComplete - Handler for completed polyline
+ * @param {Function} props.onMarkerComplete - Handler for completed marker
+ */
 const GeomanControl = ({ onPolygonComplete, onPolylineComplete, onMarkerComplete }) => {
   const map = useMap();
   useEffect(() => {
@@ -103,6 +155,15 @@ const GeomanControl = ({ onPolygonComplete, onPolylineComplete, onMarkerComplete
   return null;
 };
 
+/**
+ * MapController Component
+ * 
+ * Handles camera navigation and flyTo animations.
+ * When targetLocation prop changes, animates map to that location.
+ * 
+ * @param {Object} props - Component props
+ * @param {Array} props.targetLocation - [lat, lng] to fly to
+ */
 const MapController = ({ targetLocation }) => {
   const map = useMap();
   useEffect(() => {
@@ -113,11 +174,29 @@ const MapController = ({ targetLocation }) => {
   return null;
 };
 
+/**
+ * LayerTracker Component
+ * 
+ * Monitors changes to the active base layer (satellite, street, terrain, etc).
+ * Updates parent state when user switches between different map backgrounds.
+ * 
+ * @param {Object} props - Component props
+ * @param {Function} props.setActiveBaseLayer - Callback with new layer name
+ */
 const LayerTracker = ({ setActiveBaseLayer }) => {
   useMapEvents({ baselayerchange(e) { setActiveBaseLayer(e.name); } });
   return null;
 };
 
+/**
+ * ZoomTracker Component
+ * 
+ * Monitors zoom level changes on the map.
+ * Useful for adjusting UI elements or triggering level-of-detail updates.
+ * 
+ * @param {Object} props - Component props
+ * @param {Function} props.onZoomChange - Callback with new zoom level
+ */
 const ZoomTracker = ({ onZoomChange }) => {
   const map = useMapEvents({
     zoomend() { onZoomChange(map.getZoom()); }
@@ -126,6 +205,15 @@ const ZoomTracker = ({ onZoomChange }) => {
 };
 
 
+/**
+ * parseSlotId Helper Function
+ * 
+ * Extracts zone, bay, and row information from a slot ID string.
+ * Slot IDs are formatted as: zoneId-bay-row (with potential hyphens in zoneId)
+ * 
+ * @param {String} slotId - Slot identifier string
+ * @returns {Object|null} Parsed object with { zoneId, bay, row } or null if invalid
+ */
 // Helper bóc tách ID
 const parseSlotId = (slotId) => {
   const parts = slotId.split('-');
@@ -137,6 +225,18 @@ const parseSlotId = (slotId) => {
   };
 };
 
+/**
+ * HoverInfoPanel Component
+ * 
+ * Displays information about a storage slot when user hovers over it.
+ * Shows the slot location (zone/bay/row) and stacked containers with their details.
+ * 
+ * Handles both 20ft and 40ft container overlaps by checking adjacent bays.
+ * Container details include tier, type (REEFER/GENERAL), size, and container number.
+ * 
+ * @param {Object} props - Component props
+ * @param {Array} props.inventory - Container inventory to query for slot contents
+ */
 const HoverInfoPanel = ({ inventory }) => {
   const [hoveredSlotData, setHoveredSlotData] = useState(null);
 

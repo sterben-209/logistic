@@ -1,6 +1,37 @@
+/**
+ * turfService - Turf.js Geospatial Grid Generation
+ * 
+ * Core service for generating container slot grids within geographic zones.
+ * 
+ * Key Algorithms:
+ * - Polygon tessellation: subdivides drawn zone polygons into uniform rectangular slots
+ * - Rotated grid alignment: aligns slots to longest zone edge (longest axis first = natural harbor orientation)
+ * - Obstacle avoidance: respects buildings, roads, and other barriers (no overlapping)
+ * - Point-in-polygon testing: validates slot positions within zone boundaries
+ * - Distance-based offset: uses Turf.js bearing/destination to compute rotated grid centers
+ * 
+ * Grid Layout:
+ * - Each slot = 3m wide × 6.5m long (TEU 20ft footprint: 2.4m × 12.2m ÷ 2)
+ * - Padding: 0.5m between bay rows, 0.2m between slot rows (tighter vertical spacing)
+ * - Bay numbering: odd increments (1, 3, 5...) from north/south alternation
+ * - Row numbering: sequential increments (01, 02, 03...)
+ * - Slot ID format: {zoneId}-{bay:2d}-{row:2d} (e.g., ZONE-01-01)
+ * 
+ * Performance:
+ * - Sweeps grid in expanding square from zone center (O(n²) but limited by bbox)
+ * - Pre-computes half-steps to avoid computing entire infinite grid
+ * - Batch obstacle intersection checks (skips non-overlapping slots)
+ * 
+ * @module turfService
+ */
 import * as turf from '@turf/turf';
 
-// Hàm tính góc của cạnh dài nhất của Polygon
+/**
+ * Calculates bearing angle of the longest edge in a polygon
+ * Used to align slot grid to natural zone orientation
+ * @param {Array<Array<number>>} coords - Polygon coordinates [lng, lat]
+ * @returns {number} - Bearing angle in degrees (0-360)
+ */
 const getLongestEdgeAngle = (coords) => {
   let maxDist = 0;
   let bestBearing = 0;
@@ -17,6 +48,33 @@ const getLongestEdgeAngle = (coords) => {
   return bestBearing;
 };
 
+/**
+ * Generates regular grid of container slots within a zone polygon
+ * 
+ * Process:
+ * 1. Extract zone bounds and calculate center point
+ * 2. Determine grid orientation from longest zone edge (or custom bearing)
+ * 3. Sweep grid outward from center in expanding square pattern
+ * 4. For each potential slot position:
+ *    a. Calculate 4 corners using Turf destination/bearing math
+ *    b. Test if slot center is within zone polygon
+ *    c. Test if slot polygon intersects any obstacles
+ *    d. If valid: add to results with ISO slot ID (bay-row)
+ * 5. Return array of slot features with coordinates
+ * 
+ * @param {Array<Object>} leafletLatLngs - Zone polygon vertices from Leaflet [LatLng objects]
+ * @param {string} zoneId - Zone identifier (ZONE, WAREHOUSE, etc.)
+ * @param {string} [zoneName='ZONE'] - Display name for zone
+ * @param {Array<Object>} [obstacleGeoJSONs=[]] - GeoJSON features to avoid (buildings, roads)
+ * @param {number} [customBearing=null] - Override automatic bearing calculation
+ * @returns {Object} - { slots: Array<SlotFeature>, metadata: { bearing: number } }
+ * @returns {Array<Object>} slots - Array of slot objects with:
+ *   - id: ISO slot ID (e.g., ZONE-01-01)
+ *   - zoneId: Parent zone
+ *   - bay, row: Grid coordinates
+ *   - path: Leaflet polygon coordinates [lat, lng]
+ *   - status: 'empty' by default
+ */
 export const generateGridWithTurf = (leafletLatLngs, zoneId, zoneName = 'ZONE', obstacleGeoJSONs = [], customBearing = null) => {
   if (!leafletLatLngs || leafletLatLngs.length < 3) return [];
   

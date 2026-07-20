@@ -1,5 +1,53 @@
+/**
+ * osmService - OpenStreetMap Data Fetching & Processing
+ * 
+ * Fetches real-world geographic data (buildings, roads, gates) from Overpass API.
+ * Processes OSM elements into port infrastructure features with intelligent shape analysis.
+ * 
+ * Features Extracted:
+ * - Buildings: structures with heuristic classification (WAREHOUSE, TANK, GENERAL)
+ * - Gates: port entry/exit points (node features)
+ * - Roads: highways for vehicle routing constraints
+ * - Hazardous zones: tank storage areas (high-circularity detection)
+ * - Industrial areas: landuse markers and parking
+ * 
+ * Overpass API Strategy:
+ * - Multi-endpoint fallback: tries 3 independent Overpass servers
+ * - Tolerant error handling: returns empty array on all failures (no crash)
+ * - Timeout: 25 seconds per request (long for port-scale areas)
+ * 
+ * AI Shape Detection Algorithm:
+ * - Calculates building circularity: 4 * PI * Area / (Perimeter²)
+ * - If circularity > 0.85 → TANK (cylindrical vessel)
+ * - If area > 2000m² && circularity < 0.75 → WAREHOUSE (large rectangle)
+ * - Otherwise → GENERAL_BUILDING
+ * - Compensates for OSM tagging gaps (many buildings have no subtype)
+ * 
+ * GeoJSON Output:
+ * - GATE: { id, type, name, latLng }
+ * - BUILDING: { id, type, subType, isHazardous, allowedCargo, path, area }
+ * - YARD: { id, type, name, path } (large generic buildings)
+ * - ROAD: { id, type, name, path } (used for obstacle avoidance)
+ * 
+ * @module osmService
+ */
 import * as turf from '@turf/turf';
 
+/**
+ * Fetches geographic features from OpenStreetMap via Overpass API
+ * 
+ * Query fetches:
+ * - All buildings in bounding box
+ * - Industrial tanks and man_made structures
+ * - Barrier gates (port entry points)
+ * - Highways (roads for routing)
+ * - Landuse: industrial, port, brownfield, parking
+ * 
+ * @param {Array<number>} bbox - Bounding box [south, west, north, east] in degrees
+ * @param {GeoJSON} [portBoundaryGeoJSON=null] - Optional port boundary for filtering
+ * @returns {Promise<Array<Object>>} - Array of feature objects with geographic data
+ * @throws {Error} - If all Overpass endpoints fail (returns empty array instead)
+ */
 export const fetchOSMFeatures = async (bbox, portBoundaryGeoJSON = null) => {
   const query = `
     [out:json][timeout:25];

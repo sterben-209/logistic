@@ -1,5 +1,42 @@
+/**
+ * Inventory Page
+ * 
+ * Real-time telemetry and inventory dashboard for container port operations.
+ * 
+ * Features:
+ * - Summary cards: total containers, active reefer units, terminal occupancy
+ * - KPI metrics: with trend indicators (% change) and visual gauges
+ * - Real-time status: shows zone capacities and alerts for near-full zones
+ * - Data table: detailed container information with filtering and sorting
+ * - Responsive design: adapts from 1-column (mobile) to 3-column (desktop) layout
+ * 
+ * Metrics Displayed:
+ * - Total Containers: 14,285 units (↑2.4% trend)
+ * - Active Reefer Units: 3,192 units at optimal temperature
+ * - Terminal Occupancy: 88% (Zone C nearing capacity)
+ * 
+ * UI Components:
+ * - Bento grid card layout with glassmorphism effects
+ * - Circular occupancy gauge (SVG-based progress indicator)
+ * - Sparkline charts showing temporal trends
+ * - Filter toolbar for type, size, zone, and status
+ * - Type-coded color indicators (DRY=green, REEFER=blue, HAZMAT=red)
+ * 
+ * Data Flow:
+ * - Pulls from global state (useTaskStore)
+ * - Updates in real-time as containers move
+ * - Responsive to zone capacity changes
+ * 
+ * @component
+ * @returns {JSX.Element} Full-page inventory telemetry dashboard
+ */
 import React from "react";
 
+/**
+ * Inventory Component
+ * Displays real-time container inventory metrics and details
+ * @component
+ */
 const Inventory = () => {
   return (
     <div className="p-margin-desktop min-h-[calc(100vh-4rem)]">

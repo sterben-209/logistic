@@ -1,6 +1,41 @@
+/**
+ * Operations Page
+ * 
+ * Comprehensive data grid interface for port inventory and logistics management.
+ * 
+ * Features:
+ * - Multi-tab view: Containers | Yards/Slots | Logistics Fleet
+ * - Live data sync: pulls from global useTaskStore
+ * - Container tracking: shows location (zone/bay/row/tier), type, weight, and transit status
+ * - Yard visualization: slot details, occupancy, and geographic centers
+ * - Fleet registry: view all vehicles (AGV, RTG, Reach Stacker), add/remove vehicles
+ * - Search & filter: find containers by ID, filter by status or zone
+ * - Pagination: handles 100+ items with prev/next navigation
+ * - Export-ready: CSV export button for data analysis
+ * 
+ * Data Sources:
+ * - fleetData: from state.tasks (active operations)
+ * - inventoryData: from state.inventory (stored containers)
+ * - slotsData: from state.slots (storage yard definitions)
+ * - fleetRegistry: from state.fleetRegistry (vehicles roster)
+ * 
+ * Container Status:
+ * - STORED: In inventory, not in transit
+ * - TRANSIT (INBOUND): On route to yard
+ * - TRANSIT (OUTBOUND): On route to gate
+ * - PENDING EXPORT: Scheduled for removal
+ * 
+ * @component
+ * @returns {JSX.Element} Full-page operations management dashboard
+ */
 import React, { useState } from "react";
 import useTaskStore from "../store/useTaskStore";
 
+/**
+ * Operations Component
+ * Multi-tab data grid for container, slot, and fleet management
+ * @component
+ */
 const Operations = () => {
   const [activeTab, setActiveTab] = useState("containers");
   const [newVehicleType, setNewVehicleType] = useState('agv');

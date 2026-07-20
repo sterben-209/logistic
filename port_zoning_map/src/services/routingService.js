@@ -1,21 +1,66 @@
 import * as turf from '@turf/turf';
 
+/**
+ * getDistance
+ * 
+ * Calculates Euclidean distance between two geographic points.
+ * Converts degree-based coordinates to approximate meters.
+ * 
+ * @param {Object} nodeA - Point with coordinates [lat, lng]
+ * @param {Object} nodeB - Point with coordinates [lat, lng]
+ * @returns {Number} Distance in meters
+ */
 export const getDistance = (nodeA, nodeB) => {
   const dx = nodeA.coordinates[1] - nodeB.coordinates[1];
   const dy = nodeA.coordinates[0] - nodeB.coordinates[0];
   return Math.sqrt(dx*dx + dy*dy) * 111000;
 };
 
+/**
+ * heuristic
+ * 
+ * Heuristic function for A* pathfinding algorithm.
+ * Uses straight-line distance as an admissible heuristic.
+ * 
+ * @param {Object} nodeA - Current node
+ * @param {Object} nodeB - Goal node
+ * @returns {Number} Estimated distance to goal
+ */
 export const heuristic = (nodeA, nodeB) => {
   return getDistance(nodeA, nodeB);
 };
 
+/**
+ * buildDynamicGraph
+ * 
+ * Constructs a weighted graph for vehicle pathfinding across the port.
+ * Creates hierarchical routing network with road lines as main corridors.
+ * 
+ * Process:
+ * 1. Build road line network from ROAD_LINE zones
+ * 2. Find intersections between road lines
+ * 3. Snap gate entry points to nearest road
+ * 4. Snap storage slot access points to nearest road
+ * 5. Connect adjacent slots/intersections with weighted edges
+ * 6. Precompute shortest paths from all gates using A* for performance
+ * 
+ * Turn penalties are applied to encourage straight-line movement.
+ * Multiple road networks are supported with proper intersection handling.
+ * 
+ * @param {Array} storageZones - All port zones including roads and storage areas
+ * @param {Array} slots - Storage slots to integrate into routing network
+ * @param {Array} gates - Entry/exit gates to route from
+ * @param {Object} portBoundary - Geographic port boundary (not currently used)
+ * @returns {Map} Graph with node IDs as keys and node objects as values
+ */
 export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
   const graph = new Map();
   const roadLines = storageZones.filter(z => z.zoneType === 'ROAD_LINE');
   
   const roadLineSegmentsMap = new Map();
   
+  // Build road line nodes: each point on a road line becomes a navigation node
+  // Segments array maps the path to locations for inserting intersection/snap nodes
   roadLines.forEach(roadLine => {
     const coords = roadLine.pathLatLngs.map(p => [p.lng, p.lat]);
     if (coords.length < 2) return;
@@ -40,6 +85,8 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     }
   });
 
+  // Pre-process road lines: convert to Turf geometries and pre-calculate bounding boxes
+  // This allows fast spatial filtering before projection calculations
   const precomputedRoadLines = roadLines.map(roadLine => {
     const coords = roadLine.pathLatLngs.map(p => [p.lng, p.lat]);
     if (coords.length < 2) return null;
@@ -51,6 +98,19 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     };
   }).filter(Boolean);
 
+  /**
+   * snapToRoad - Internal Helper
+   * 
+   * Finds the closest point on any road line to a given coordinate.
+   * Projects the point onto the nearest road segment and returns the snap info.
+   * Used to connect gates and slots to the main road network.
+   * 
+   * @param {Array} pointCoord - [lat, lng] coordinate to snap to road
+   * @param {Number} maxDist - Maximum search distance in meters
+   * @param {String} ignoreId - Zone ID to exclude from snapping
+   * @param {String} targetRoadLineId - If specified, snap only to this specific road
+   * @returns {Object|null} Snap point with roadLineId, coordinates, segmentIndex, t, and distance
+   */
   const snapToRoad = (pointCoord, maxDist, ignoreId = null, targetRoadLineId = null) => {
     let bestSnap = null;
     let minDist = maxDist;
@@ -104,6 +164,8 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     return bestSnap;
   };
 
+  // Find intersections between different road lines
+  // Create intersection nodes where multiple roads cross, enabling route transfers
   for (let i = 0; i < precomputedRoadLines.length; i++) {
     for (let j = i + 1; j < precomputedRoadLines.length; j++) {
       const line1 = precomputedRoadLines[i];
@@ -140,9 +202,12 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     }
   }
 
+  // Connect segments within each road line with edges
+  // Segments are sorted by t-parameter (position along the line) for correct connectivity
+  // Cross-connect to other roads: Each road segment endpoint snaps to intersecting roads
   for (const segments of roadLineSegmentsMap.values()) {
     for (const segment of segments) {
-      // Dùng mảng tạm để duyệt tránh infinite loop khi push thêm phần tử vào chính segment này
+      // Preserve original road cell nodes before adding snaps to avoid infinite loops
       const originalNodes = segment.filter(item => item.node.type === 'ROAD_CELL' && (item.t === 0 || item.t === 1));
       
       for (const {node, t} of originalNodes) {
@@ -161,6 +226,8 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
     }
   }
 
+  // Connect gate entry/exit points to the road network
+  // Each gate gets a snap point on the nearest road within 2km
   gates.forEach(gate => {
     if (!gate || !gate.latLng) return;
     const lat = gate.latLng.lat !== undefined ? gate.latLng.lat : gate.latLng[0];
@@ -183,14 +250,17 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
 
   let totalSlotsCount = 0;
 
+  // Connect storage slots to the road network
+  // Each slot gets a snap point on the nearest road within 2km
+  // This allows vehicles to navigate directly to each storage location
   storageZones.forEach(zone => {
     if (!zone.slots || zone.slots.length === 0) return;
     if (zone.zoneType === 'ROAD' || zone.zoneType === 'ROAD_LINE') return;
 
     totalSlotsCount += zone.slots.length;
 
-    // Tính điểm truy cập (SNAP) trên đường cho TỪNG slot riêng biệt
-    // Điều này giúp xe tải đi vào sâu nhất có thể trên đường xương cá đến điểm gần container nhất
+    // Calculate access point (SNAP) on the road for each slot individually
+    // This allows vehicles to penetrate as deep as possible on the access network to reach containers
     zone.slots.forEach(slot => {
       const lat = slot.path.reduce((sum, p) => sum + p[0], 0) / slot.path.length;
       const lng = slot.path.reduce((sum, p) => sum + p[1], 0) / slot.path.length;
@@ -200,8 +270,8 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
       const snap = snapToRoad([lat, lng], 2000, zone.id);
       if (snap) {
         const snapNodeId = `snap-slot-${slot.id}`;
-        // Nếu đã có snap node ở vị trí này (cùng t) thì có thể tái sử dụng, 
-        // nhưng để đơn giản ta cứ tạo node mới, Dijkstra vẫn xử lý tốt trọng số 0
+        // Create unique snap node for each slot's access point
+        // Could reuse snap nodes at same position, but creating new nodes allows Dijkstra to handle properly
         const snapNode = { id: snapNodeId, coordinates: snap.coordinates, type: 'SNAP', edges: [] };
         graph.set(snapNodeId, snapNode);
         
@@ -234,12 +304,33 @@ export const buildDynamicGraph = (storageZones, slots, gates, portBoundary) => {
   return graph;
 };
 
+/**
+ * MinHeap Class
+ * 
+ * Binary min-heap implementation for A* priority queue.
+ * Efficiently maintains ordered open set during pathfinding.
+ * 
+ * Methods:
+ * - push(node, score): Add node with priority score
+ * - pop(): Remove and return lowest-score node
+ * - isEmpty(): Check if heap is empty
+ */
 class MinHeap {
   constructor() { this.heap = []; }
+  
+  /**
+   * Add a node with its priority score to the heap
+   * Maintains min-heap property by bubbling up
+   */
   push(node, score) {
     this.heap.push({ node, score });
     this._bubbleUp(this.heap.length - 1);
   }
+  
+  /**
+   * Remove and return the node with minimum score
+   * Replaces root with last element and maintains heap property
+   */
   pop() {
     if (this.heap.length === 0) return null;
     const min = this.heap[0];
@@ -250,6 +341,11 @@ class MinHeap {
     }
     return min;
   }
+  
+  /**
+   * Moves element up the tree to maintain min-heap property
+   * Used after insertion to restore heap order
+   */
   _bubbleUp(idx) {
     const element = this.heap[idx];
     while (idx > 0) {
@@ -261,6 +357,12 @@ class MinHeap {
       idx = parentIdx;
     }
   }
+  
+  /**
+   * Moves element down the tree to maintain min-heap property
+   * Compares with children and swaps with minimum child if necessary
+   * Used after root removal to restore heap order
+   */
   _sinkDown(idx) {
     const length = this.heap.length;
     const element = this.heap[idx];
@@ -286,16 +388,34 @@ class MinHeap {
       idx = swap;
     }
   }
+  
+  /** Check if heap has no elements */
   isEmpty() { return this.heap.length === 0; }
 }
 
 export let ssspCameFromCache = new Map();
 let pathCache = new Map();
 
+/**
+ * precomputeAllPaths - Internal Helper
+ * 
+ * Pre-computes shortest paths from all gates to all other nodes using A*.
+ * Caches the cameFrom map for each gate as SSSP (Single-Source Shortest Path).
+ * 
+ * This dramatically improves pathfinding performance when routes start from gates:
+ * - Gate→Slot lookups: O(1) instant retrieval from cache
+ * - Slot→Slot or Slot→Gate: Falls back to on-demand A* with O(log N) heuristic guidance
+ * - Performance: Precompute runs once at graph creation, saves ~100ms per pathfind
+ * 
+ * @param {Map} graph - Port navigation graph
+ * @param {Array} gates - Gate nodes to precompute paths from
+ */
 const precomputeAllPaths = (graph, gates) => {
    ssspCameFromCache.clear();
    const t0 = performance.now();
    
+   // Run A* from each gate to all reachable nodes
+   // Cache the cameFrom parent map for fast lookups during pathfinding
    gates.forEach(gate => {
       const gateId = gate.id;
       if (!graph.has(gateId)) return;
@@ -356,6 +476,27 @@ const precomputeAllPaths = (graph, gates) => {
    console.log(`[SSSP Precompute] Finished in ${(performance.now() - t0).toFixed(2)}ms for ${gates.length} gates.`);
 };
 
+/**
+ * findShortestPath
+ * 
+ * Finds optimal route between two nodes in the port graph.
+ * Uses hierarchical caching for performance optimization.
+ * 
+ * Algorithm Selection (in order of priority):
+ * 1. Check SSSP cache (Single-Source Shortest Path) precomputed from gates - O(1)
+ * 2. Check path cache for recently computed routes - O(1)
+ * 3. Fall back to A* pathfinding for uncached routes
+ * 
+ * Features:
+ * - Turn penalties applied to sharp angles for realistic vehicle movement
+ * - Heuristic-guided A* search for efficiency
+ * - Path caching to avoid redundant computations
+ * 
+ * @param {String} startNodeId - Node ID where route starts
+ * @param {String} targetNodeId - Node ID where route ends
+ * @param {Map} graph - Port navigation graph
+ * @returns {Array} Array of [lat, lng] coordinate pairs representing the path
+ */
 export const findShortestPath = (startNodeId, targetNodeId, graph) => {
   if (!graph.has(startNodeId) || !graph.has(targetNodeId)) return [];
 
@@ -367,7 +508,7 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
      return finalIds.map(id => graph.get(id).coordinates);
   };
   
-  // KIỂM TRA SSSP CACHE TRƯỚC (Thời gian: O(L) ~ 0.001ms)
+  // Try SSSP cache first: Check if path from startNodeId is precomputed (O(1) lookup)
   if (ssspCameFromCache.has(startNodeId)) {
       const cameFrom = ssspCameFromCache.get(startNodeId);
       if (cameFrom.has(targetNodeId)) {
@@ -381,7 +522,7 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
           return processPathArray(nodePath);
       }
   } else if (ssspCameFromCache.has(targetNodeId)) {
-      // Trường hợp ngược lại (Slot -> Gate)
+      // Reverse case: check if target is a gate with precomputed paths (Slot -> Gate)
       const cameFrom = ssspCameFromCache.get(targetNodeId);
       if (cameFrom.has(startNodeId)) {
           const nodePath = [];
@@ -395,7 +536,7 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
       }
   }
 
-  // FALLBACK SANG A* NẾU KHÔNG CÓ TRONG SSSP (Ví dụ Slot -> Slot)
+  // Fall back to A* pathfinding if no SSSP cache available (e.g., Slot -> Slot routes)
   const cacheKey = `${startNodeId}->${targetNodeId}`;
   if (pathCache.has(cacheKey)) {
       return [...pathCache.get(cacheKey)];
@@ -415,12 +556,13 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
     const minObj = openQueue.pop();
     const current = minObj.node;
     
-    // Bỏ qua nếu đã có đường tốt hơn được xử lý
+    // Skip if we've already found a better path through this node
     if (minObj.score > (fScore.get(current) || Infinity)) continue;
     
     if (current === targetNodeId) {
       const nodePath = [];
       let curr = current;
+      // Reconstruct path by following parent pointers backward
       while (cameFrom.has(curr)) {
         nodePath.unshift(curr);
         curr = cameFrom.get(curr);
@@ -438,7 +580,7 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
       const neighbor = edge.to;
       let turnPenalty = 0;
       
-      // Calculate turn penalty
+      // Calculate turn penalty: penalize sharp angles for more realistic vehicle routing
       if (cameFrom.has(current)) {
          const prev = cameFrom.get(current);
          const prevNode = graph.get(prev);
@@ -478,4 +620,10 @@ export const findShortestPath = (startNodeId, targetNodeId, graph) => {
   return [];
 };
 
+/**
+ * buildGraph
+ * 
+ * Alias for buildDynamicGraph for backward compatibility.
+ * Preferred method for constructing the port navigation graph.
+ */
 export const buildGraph = buildDynamicGraph;

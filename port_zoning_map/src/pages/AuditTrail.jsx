@@ -1,7 +1,48 @@
+/**
+ * AuditTrail Page
+ * 
+ * Blockchain-style immutable audit trail viewer for port operations.
+ * 
+ * Key Features:
+ * - Hash-chain integrity verification: validates SHA-256 hash links between consecutive logs
+ * - Cryptographic verification: each log contains previousHash and currentHash
+ * - Block integrity check: recalculates hash from data and compares with stored hash
+ * - IndexedDB persistence: logs stored in 'nexus_audit_logs' for offline access
+ * - Worker verification: displays wallet addresses of personnel who performed actions
+ * - Real-time status: shows verification result (success/error) with visual indicators
+ * 
+ * Hash Chain Structure:
+ * - Log[0]: previousHash = "GENESIS_BLOCK"
+ * - Log[i]: previousHash = Log[i-1].currentHash
+ * - Log[i]: currentHash = SHA256(containerId + action + details + timestamp + previousHash)
+ * - Any tampering = hash mismatch = detected violation
+ * 
+ * Verification Flow:
+ * 1. Fetch all logs from IndexedDB (oldest first)
+ * 2. Loop through logs sequentially
+ * 3. For each log: verify previousHash link to prior log
+ * 4. For each log: recalculate SHA-256, compare with stored hash
+ * 5. If any mismatch found: mark as invalid and highlight row
+ * 6. Display result with affected record ID
+ * 
+ * UI Components:
+ * - Verification status banner (green success / red error)
+ * - Data table with columns: timestamp, container ID, action, worker wallet, details, hash
+ * - Control buttons: Refresh, Verify Integrity, Clear History
+ * - Invalid rows highlighted in red for quick spotting of tampering
+ * 
+ * @component
+ * @returns {JSX.Element} Full-page audit trail viewer with verification tools
+ */
 import React, { useState, useEffect } from 'react';
 import { get, set } from 'idb-keyval';
 import { generateHash } from '../services/auditService';
 
+/**
+ * AuditTrail Component
+ * Displays and verifies hash-chain audit logs
+ * @component
+ */
 const AuditTrail = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);

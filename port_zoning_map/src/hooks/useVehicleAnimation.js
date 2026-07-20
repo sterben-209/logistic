@@ -1,7 +1,47 @@
+/**
+ * useVehicleAnimation Hook
+ * 
+ * Core animation engine for port vehicle movement and task lifecycle management.
+ * 
+ * Responsibilities:
+ * - Animates vehicle movement along pre-calculated paths (4 nodes per tick = 4x speed multiplier)
+ * - Manages task state transitions (EN_ROUTE_TO_SLOT → HANDLING → EN_ROUTE_TO_GATE → COMPLETED)
+ * - Implements collision detection and deadlock prevention (ghost mode bypass after 3s stuck)
+ * - Coordinates INBOUND/OUTBOUND task pairs: tractor + support task handoff at yard
+ * - Logs audit events (YARD_DROP_CONFIRMED, GATE_OUT_CONFIRMED) with worker verification
+ * - Tracks container inventory updates (add on INBOUND, remove on OUTBOUND)
+ * - Tick-based animation loop at 20fps (~50ms per frame) to balance smoothness and CPU load
+ * 
+ * Task Lifecycle:
+ * 1. EN_ROUTE_TO_SLOT: Vehicle moves toward destination, checks for collision/deadlock
+ * 2. WAITING_FOR_SUPPORT / WAITING_FOR_TRACTOR: Pair coordination (one waits for other)
+ * 3. HANDLING / HANDLING_SUPPORT: Both vehicles at slot, performing operation (1.5s delay)
+ * 4. EN_ROUTE_TO_GATE: Vehicle returns to gate along reversed path
+ * 5. COMPLETED: Task removed from store after 500ms delay
+ * 
+ * Collision Handling:
+ * - Checks if next position conflicts with other moving vehicles
+ * - If stuck for 3 seconds: enters "ghost mode" (can phase through obstacles for 2s)
+ * - Ghost mode moves slower (2 nodes/tick vs 4) to simulate careful navigation
+ * 
+ * Performance Optimizations:
+ * - Uses requestAnimationFrame + setTimeout for consistent 20fps
+ * - Avoids object allocation in tight loop (reuses state refs)
+ * - Only updates store if task state changes (prevents thrashing)
+ * - Path-4x jump: moves 4 waypoints per tick instead of 1
+ * 
+ * @hook
+ * @returns {void} - Side effect hook, no return value
+ */
 import { useEffect, useRef } from 'react';
 import useTaskStore from '../store/useTaskStore';
 import { logAuditEvent, MOCK_WORKERS } from '../services/auditService';
 
+/**
+ * Vehicle animation hook implementation
+ * Sets up requestAnimationFrame loop for continuous task updates
+ * @hook
+ */
 export default function useVehicleAnimation() {
   const requestRef = useRef();
   

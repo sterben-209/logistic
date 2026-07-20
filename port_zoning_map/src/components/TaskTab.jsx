@@ -1,9 +1,49 @@
+/**
+ * TaskTab Component
+ * 
+ * Right-side collapsible panel for port task dispatch and fleet management.
+ * 
+ * Key Responsibilities:
+ * - Inbound task creation: generates external tractor + AGV support task pairs
+ * - Outbound task creation: locates exportable containers and routes to gates
+ * - Bulk task generation: spawns 1-20 tasks with staggered delays to prevent lock-outs
+ * - Real-time task status display: live progress bars and state tracking
+ * - Form controls: size (20ft/40ft), cargo type (DRY/REEFER/FLAMMABLE), quantity
+ * 
+ * Task Flow:
+ * 1. User fills form (Inbound/Outbound, size, cargo type, quantity)
+ * 2. On submit: calls findBestSlot (INBOUND) or findContainerToExport (OUTBOUND)
+ * 3. Creates task pair: {externalTractor} + {supportTask} per item
+ * 4. Enqueues tasks to store, broadcasts to other listeners
+ * 5. useVehicleAnimation picks up tasks and animates vehicle movement
+ * 
+ * UI Design:
+ * - Minimalist collapsible sidebar (48px when closed, 380px when expanded)
+ * - Glass morphism effect with blur and semi-transparent background
+ * - Real-time metrics: active tasks count, pending queue length
+ * - Styled progress bars with gradient and glow effects
+ * - Vietnamese labels and status messages (i18n-ready)
+ * 
+ * @component
+ * @returns {JSX.Element} Collapsible task dispatch panel
+ */
 import React, { useState, useMemo } from 'react';
 import useTaskStore from '../store/useTaskStore';
 import { findBestSlot, findContainerToExport } from '../services/slotService';
+
+/**
+ * Helper function: delays execution for a specified milliseconds
+ * Used to yield control to browser for UI updates and prevent rapid-fire enqueues
+ * @param {number} ms - Milliseconds to delay
+ * @returns {Promise<void>}
+ */
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  export default function TaskTab() {
+/**
+ * TaskTab Component
+ * @component
+ */
+export default function TaskTab() {
   const { inventory, tasks, taskQueue, enqueueTask, lockContainer, broadcasters, gates, slots, storageZones, portBoundary } = useTaskStore();
   const activeTasks = tasks.filter(t => t.status !== 'COMPLETED');
   const pendingTasks = taskQueue;

@@ -1,3 +1,25 @@
+/**
+ * findBestSlot
+ * 
+ * Algorithm to find the optimal slot for placing a cargo/container.
+ * 
+ * Process:
+ * 1. Determines valid storage zones based on cargo type (explicit allowedCargo or fallback to zoneType)
+ * 2. Pre-indexes inventory by slot ID for O(1) lookup performance
+ * 3. Filters valid slots based on:
+ *    - Zone compatibility
+ *    - Bay capacity (max 5 tiers per bay)
+ *    - Stacking constraints (size/weight compatibility)
+ *    - Adjacent bay checks for 40ft containers
+ * 4. Scores remaining slots based on weight distribution and cargo clustering
+ * 5. Returns the highest-scoring slot for optimal space utilization
+ * 
+ * @param {Object} cargoInfo - Cargo details { size, weight, cargoType }
+ * @param {Array} slots - Available storage slots
+ * @param {Array} storageZones - Zone definitions with type and allowed cargo
+ * @param {Array} inventory - Current container inventory
+ * @returns {Object|null} Best slot object or null if no valid slots available
+ */
 export const findBestSlot = (cargoInfo, slots, storageZones, inventory) => {
   const { size, weight, cargoType } = cargoInfo;
   
@@ -140,6 +162,24 @@ export const findBestSlot = (cargoInfo, slots, storageZones, inventory) => {
   return scoredSlots[0].slot;
 };
 
+/**
+ * findContainerToExport
+ * 
+ * Finds a container matching the export criteria that's accessible (at or near the top).
+ * 
+ * Process:
+ * 1. Groups inventory by slot to identify stacks
+ * 2. Pre-indexes slots by location key for fast lookup
+ * 3. Searches each slot for a matching container (prioritizes those closest to top)
+ * 4. Filters out containers already pending export
+ * 5. Returns deterministic result (sorted by slot ID) to ensure consistency across page reloads
+ * 
+ * @param {Object} cargoInfo - Export criteria { size, cargoType }
+ * @param {Array} inventory - Current container inventory
+ * @param {Array} slots - Available storage slots
+ * @param {Set} pendingExportsSet - Set of container IDs already scheduled for export
+ * @returns {Object|null} Object with slot and container properties, or null if no match found
+ */
 export const findContainerToExport = (cargoInfo, inventory, slots, pendingExportsSet = new Set()) => {
   const { size, cargoType } = cargoInfo;
   const targetSize = parseInt(size, 10) || (String(size).includes('40') ? 40 : 20);
@@ -207,6 +247,23 @@ export const findContainerToExport = (cargoInfo, inventory, slots, pendingExport
   return candidates[0];
 };
 
+/**
+ * calculateNewTier
+ * 
+ * Calculates the tier (vertical stack position) for a new container placement.
+ * 
+ * Logic:
+ * - For 40ft containers: Occupies two adjacent bays, finds overlapping containers on the even bay
+ * - For 20ft containers: Occupies single bay, finds all overlapping containers (including those from 40ft stacks)
+ * - Returns one tier above the highest overlapping container
+ * 
+ * @param {String} zoneName - Zone ID where container will be placed
+ * @param {Number} bay - Bay number (column position)
+ * @param {Number} row - Row number (position in zone)
+ * @param {Number|String} size - Container size (20 or 40 feet)
+ * @param {Array} inventory - Current container inventory
+ * @returns {Number} New tier value for placement (1-5 typically)
+ */
 export const calculateNewTier = (zoneName, bay, row, size, inventory) => {
     const baseBay = parseInt(bay, 10);
     const sizeNum = parseInt(size, 10) || (String(size).includes('40') ? 40 : 20);
